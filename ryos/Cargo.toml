@@ -7,6 +7,7 @@ default-run = "ryos"
 members = ["kernel"]
 
 [dependencies]
+# run with uefi without donwload any files
 ovmf-prebuilt = "0.1.0-alpha"
 
 [build-dependencies]
