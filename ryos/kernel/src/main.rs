@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(abi_x86_interrupt)]
 use core::panic::PanicInfo;
 use bootloader_api::info::FrameBufferInfo;
 use conquer_once::spin::OnceCell;
@@ -8,6 +9,7 @@ use log::__private_api::log;
 
 bootloader_api::entry_point!(kernel_main);
 mod terminal;
+mod interrupts;
 
 // ↓ this replaces the `_start` function ↓
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
@@ -28,6 +30,13 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     // finally, initialize the logger using the last two variables
     init_logger(raw_frame_buffer, frame_buffer_info);
     log::info!("test");
+
+    interrupts::interrupts::init_idt();
+    log::info!("idt initialized");
+
+    x86_64::instructions::interrupts::int3();
+
+    log::info!("end");
 
     loop {}
 }
