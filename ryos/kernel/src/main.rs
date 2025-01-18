@@ -16,12 +16,12 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 
     x86_64::instructions::interrupts::int3();
 
-    loop {}
+    hlt_loop();
 }
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+    hlt_loop();
 }
 
 pub(crate) static LOGGER: OnceCell<LockedLogger> = OnceCell::uninit();
@@ -57,4 +57,10 @@ fn init(boot_info: &'static mut bootloader_api::BootInfo)
 
     unsafe { interrupts::interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
+}
+
+pub fn hlt_loop() -> ! {
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
