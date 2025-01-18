@@ -13,6 +13,28 @@ mod interrupts;
 
 // ↓ this replaces the `_start` function ↓
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
+    init(boot_info);
+
+    x86_64::instructions::interrupts::int3();
+
+    loop {}
+}
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
+}
+
+pub(crate) static LOGGER: OnceCell<LockedLogger> = OnceCell::uninit();
+pub(crate) fn init_logger(buffer: &'static mut [u8], info: FrameBufferInfo) {
+    let logger = LOGGER.get_or_init(move || LockedLogger::new(buffer, info, true, false));
+    log::set_logger(logger).expect("Logger already set");
+    log::set_max_level(log::LevelFilter::Trace);
+    log::info!("Hello, Kernel Mode!");
+}
+
+fn init(boot_info: &'static mut bootloader_api::BootInfo)
+{
     let frame_buffer_optional = &mut boot_info.framebuffer;
 
     // free the wrapped framebuffer from the FFI-safe abstraction provided by bootloader_api
@@ -29,27 +51,11 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 
     // finally, initialize the logger using the last two variables
     init_logger(raw_frame_buffer, frame_buffer_info);
-    log::info!("test");
+    log::info!("Logger initialized");
 
     interrupts::interrupts::init_idt();
-    log::info!("idt initialized");
+    log::info!("IDT initialized");
 
-    x86_64::instructions::interrupts::int3();
-
-    log::info!("end");
-
-    loop {}
-}
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
-
-pub(crate) static LOGGER: OnceCell<LockedLogger> = OnceCell::uninit();
-pub(crate) fn init_logger(buffer: &'static mut [u8], info: FrameBufferInfo) {
-    let logger = LOGGER.get_or_init(move || LockedLogger::new(buffer, info, true, false));
-    log::set_logger(logger).expect("Logger already set");
-    log::set_max_level(log::LevelFilter::Trace);
-    log::info!("Hello, Kernel Mode!");
+    unsafe { interrupts::interrupts::PICS.lock().initialize() };
+    x86_64::instructions::interrupts::enable();
 }
