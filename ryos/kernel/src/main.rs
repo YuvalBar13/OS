@@ -5,7 +5,6 @@ use core::panic::PanicInfo;
 use bootloader_api::info::FrameBufferInfo;
 use conquer_once::spin::OnceCell;
 use bootloader_x86_64_common::logger::LockedLogger;
-use log::__private_api::log;
 
 bootloader_api::entry_point!(kernel_main);
 mod terminal;
@@ -51,10 +50,10 @@ fn init(boot_info: &'static mut bootloader_api::BootInfo)
 
     // finally, initialize the logger using the last two variables
     init_logger(raw_frame_buffer, frame_buffer_info);
-    log::info!("Logger initialized");
+    my_info!("Logger initialized");
 
     interrupts::interrupts::init_idt();
-    log::info!("IDT initialized");
+    my_info!("IDT initialized");
 
     unsafe { interrupts::interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();

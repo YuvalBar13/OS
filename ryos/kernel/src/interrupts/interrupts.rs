@@ -1,7 +1,6 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use log::__private_api::log;
-
 use lazy_static::lazy_static;
+use crate::my_info;
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -21,13 +20,13 @@ pub fn init_idt() {
 extern "x86-interrupt" fn breakpoint_handler(
     stack_frame: InterruptStackFrame)
 {
-    log::info!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+    my_info!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(
     _stack_frame: InterruptStackFrame)
 {
-    log::info!(".");
+    my_info!(".");
 
     unsafe {
         PICS.lock()
