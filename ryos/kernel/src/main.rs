@@ -16,7 +16,10 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 
     x86_64::instructions::interrupts::int3();
 
-    hlt_loop();
+    loop {
+        terminal::interface::run();
+        x86_64::instructions::hlt();
+    }
 }
 
 #[panic_handler]

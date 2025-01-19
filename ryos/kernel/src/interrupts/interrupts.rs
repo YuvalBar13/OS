@@ -1,6 +1,6 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 use lazy_static::lazy_static;
-use crate::my_info;
+use crate::{my_info, terminal::input::buffer::BUFFER};
 
 use pic8259::ChainedPics;
 use spin;
@@ -76,6 +76,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
                 HandleControl::Ignore)
             );
     }
+    
 
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
@@ -84,7 +85,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
     if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
-                DecodedKey::Unicode(character) => my_info!("{}", character),
+                DecodedKey::Unicode(character) => x86_64::instructions::interrupts::without_interrupts(|| {BUFFER.lock().add_char(character);}),
                 DecodedKey::RawKey(key) => my_info!("{:?}", key),
             }
         }
