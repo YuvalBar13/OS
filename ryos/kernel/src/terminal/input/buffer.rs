@@ -46,7 +46,7 @@ impl InputBuffer {
             my_error!("Buffer is full");
         }
 
-        return false;
+        false
     }
 
     fn end_listening(&mut self)
