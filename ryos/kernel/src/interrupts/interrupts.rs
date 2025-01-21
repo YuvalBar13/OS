@@ -1,4 +1,4 @@
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 use lazy_static::lazy_static;
 use crate::{println, eprintln,terminal::input::buffer::BUFFER};
 use crate::interrupts::gdt;
@@ -33,6 +33,8 @@ lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        idt.page_fault.set_handler_fn(page_fault_handler);
+        idt.stack_segment_fault.set_handler_fn(stack_segment_fault_handler);
         idt[InterruptIndex::Timer.as_u8()]
             .set_handler_fn(timer_interrupt_handler);
 
@@ -58,11 +60,28 @@ extern "x86-interrupt" fn breakpoint_handler(
     eprintln!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame, page_fault_error: PageFaultErrorCode)
+{
+    eprintln!("EXCEPTION: PAGE FAULT\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn stack_segment_fault_handler(
+    stack_frame: InterruptStackFrame, code: u64)
+{
+    eprintln!("EXCEPTION: PAGE FAULT\n{:#?}", stack_frame);
+}
+use spin::Mutex;
+
+
+lazy_static!
+    {
+        pub static ref TICK_COUNTER: spin::Mutex<i32> = Mutex::new(0);
+    }
+
 extern "x86-interrupt" fn timer_interrupt_handler(
     _stack_frame: InterruptStackFrame)
 {
-    //my_info!(".");
-
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());

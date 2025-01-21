@@ -2,12 +2,14 @@
 macro_rules! print {
     ($($arg:tt)*) => ({
         use core::fmt::Write;
-        let _ = write!($crate::terminal::output::framebuffer::WRITER
-            .get()
-            .expect("Writer not initialized")
-            .lock(),
-            $($arg)*
-        );
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let _ = write!($crate::terminal::output::framebuffer::WRITER
+                .get()
+                .expect("Writer not initialized")
+                .lock(),
+                $($arg)*
+            );
+        })
     });
 }
 

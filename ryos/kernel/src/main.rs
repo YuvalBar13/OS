@@ -2,13 +2,7 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
-use core::fmt::Write;
 use core::panic::PanicInfo;
-use bootloader_api::info::{FrameBuffer, FrameBufferInfo};
-use conquer_once::spin::OnceCell;
-use bootloader_x86_64_common::logger::LockedLogger;
-use noto_sans_mono_bitmap::{FontWeight, RasterHeight};
-use crate::terminal::output::framebuffer::Writer;
 
 bootloader_api::entry_point!(kernel_main);
 mod terminal;
@@ -19,9 +13,6 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
 
     x86_64::instructions::interrupts::int3();
-    unsafe {
-        *(0xdeadbeef as (*mut u8)) = 42;
-    };
 
     loop {
         terminal::interface::run();
@@ -47,7 +38,7 @@ fn init(boot_info: &'static mut bootloader_api::BootInfo)
 
     terminal::output::framebuffer::init_writer(frame_buffer);
 
-    interrupts::gdt::init();
+    //interrupts::gdt::init();
     interrupts::interrupts::init_idt();
     println!("IDT initialized");
 
