@@ -19,7 +19,7 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
 
     x86_64::instructions::interrupts::int3();
-
+    
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
