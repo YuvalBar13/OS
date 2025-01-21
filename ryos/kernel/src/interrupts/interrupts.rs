@@ -1,6 +1,6 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 use lazy_static::lazy_static;
-use crate::{my_info, terminal::input::buffer::BUFFER};
+use crate::{println, terminal::input::buffer::BUFFER};
 
 use pic8259::ChainedPics;
 use spin;
@@ -49,7 +49,7 @@ pub fn init_idt() {
 extern "x86-interrupt" fn breakpoint_handler(
     stack_frame: InterruptStackFrame)
 {
-    my_info!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+    println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(
@@ -86,7 +86,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
                 DecodedKey::Unicode(character) => x86_64::instructions::interrupts::without_interrupts(|| {BUFFER.lock().add_char(character);}),
-                DecodedKey::RawKey(key) => my_info!("{:?}", key),
+                DecodedKey::RawKey(key) => println!("{:?}", key),
             }
         }
     }
