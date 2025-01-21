@@ -14,11 +14,8 @@ mod interrupts;
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
 
-    //x86_64::instructions::interrupts::int3();
-    unsafe {
-        *(0xdeadbeef as *mut u8) = 42; //page fault that should trigger double fault
-    };
-
+    x86_64::instructions::interrupts::int3();
+    
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
@@ -27,7 +24,6 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    log::error!("{}", _info);
     hlt_loop();
 }
 
@@ -59,7 +55,6 @@ fn init(boot_info: &'static mut bootloader_api::BootInfo)
     init_logger(raw_frame_buffer, frame_buffer_info);
     my_info!("Logger initialized");
 
-    interrupts::gdt::init();
     interrupts::interrupts::init_idt();
     my_info!("IDT initialized");
 
