@@ -1,0 +1,31 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+
+
+[[bin]]
+name = "kernel"
+test = false
+bench = false
+
+[dependencies]
+# for the bootloader
+bootloader_api = "0.11.2"
+x86_64 = "0.15.1"
+pic8259 = "0.10.1"
+spin = "0.9.8"
+pc-keyboard = "0.5.0"
+heapless = "0.7"
+
+# console imports
+embedded-graphics = "0.8.1"
+log = { version = "0.4.17", default-features = false }
+bootloader-x86_64-common = "0.11.3"
+conquer-once = { version = "0.4.0", default-features = false }
+noto-sans-mono-bitmap = { version = "0.3.1", features = ["size_24", "size_32"] }
+
+
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
