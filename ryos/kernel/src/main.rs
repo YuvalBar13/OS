@@ -19,7 +19,10 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
 
     x86_64::instructions::interrupts::int3();
-    
+    unsafe {
+        *(0xdeadbeef as (*mut u8)) = 42;
+    };
+
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
@@ -28,6 +31,7 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+    eprintln!("{}", _info);
     hlt_loop();
 }
 
@@ -43,6 +47,7 @@ fn init(boot_info: &'static mut bootloader_api::BootInfo)
 
     terminal::output::framebuffer::init_writer(frame_buffer);
 
+    interrupts::gdt::init();
     interrupts::interrupts::init_idt();
     println!("IDT initialized");
 
