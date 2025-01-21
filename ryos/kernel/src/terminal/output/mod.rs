@@ -1,2 +1,2 @@
 pub mod  framebuffer;
-pub mod my_log;
+pub mod print_macros;
