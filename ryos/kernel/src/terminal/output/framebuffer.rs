@@ -251,6 +251,27 @@ impl Writer {
 
         self.row_position -= 1;
     }
+
+    pub fn backspace(&mut self) {
+        if self.column_position > 0 {
+            self.column_position -= 1;
+            // Clear the character at the current position
+            let char_width = self.char_width();
+            let char_height = self.char_height();
+
+            // Clear the character space
+            for y in 0..char_height {
+                for x in 0..char_width {
+                    let pos = Position {
+                        x: self.column_position * char_width + x,
+                        y: self.row_position * char_height + y,
+                    };
+                    set_pixel_in(&mut self.buffer, pos, Color { red: 0, green: 0, blue: 0 });
+                }
+            }
+        }
+    }
+
 }
 
 impl core::fmt::Write for Writer {

@@ -1,7 +1,7 @@
 use heapless::String;
 use crate::{print, println};
 use lazy_static::lazy_static;
-
+use crate::terminal::output::framebuffer::WRITER;
 const BUFFER_SIZE: usize = 100;
 
 #[derive(Default)]
@@ -35,6 +35,7 @@ impl InputBuffer {
             }
 
             self.buffer.pop();
+            WRITER.get().expect("Writer not initialized").lock().backspace();
             return true;
         }
 
