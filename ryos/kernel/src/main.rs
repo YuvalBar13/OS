@@ -1,10 +1,14 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
+
+use core::fmt::Write;
 use core::panic::PanicInfo;
-use bootloader_api::info::FrameBufferInfo;
+use bootloader_api::info::{FrameBuffer, FrameBufferInfo};
 use conquer_once::spin::OnceCell;
 use bootloader_x86_64_common::logger::LockedLogger;
+use noto_sans_mono_bitmap::{FontWeight, RasterHeight};
+use crate::terminal::output::framebuffer::Writer;
 
 bootloader_api::entry_point!(kernel_main);
 mod terminal;
@@ -27,36 +31,20 @@ fn panic(_info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-pub(crate) static LOGGER: OnceCell<LockedLogger> = OnceCell::uninit();
-pub(crate) fn init_logger(buffer: &'static mut [u8], info: FrameBufferInfo) {
-    let logger = LOGGER.get_or_init(move || LockedLogger::new(buffer, info, true, false));
-    log::set_logger(logger).expect("Logger already set");
-    log::set_max_level(log::LevelFilter::Trace);
-    log::info!("Hello, Kernel Mode!");
-}
 
 fn init(boot_info: &'static mut bootloader_api::BootInfo)
 {
     let frame_buffer_optional = &mut boot_info.framebuffer;
 
     // free the wrapped framebuffer from the FFI-safe abstraction provided by bootloader_api
-    let frame_buffer_option = frame_buffer_optional.as_mut();
+    let frame_buffer = frame_buffer_optional.take().unwrap();
 
-    // unwrap the framebuffer
-    let frame_buffer_struct = frame_buffer_option.unwrap();
 
-    // extract the framebuffer info and, to satisfy the borrow checker, clone it
-    let frame_buffer_info = frame_buffer_struct.info().clone();
 
-    // get the framebuffer's mutable raw byte slice
-    let raw_frame_buffer = frame_buffer_struct.buffer_mut();
-
-    // finally, initialize the logger using the last two variables
-    init_logger(raw_frame_buffer, frame_buffer_info);
-    my_info!("Logger initialized");
+    terminal::output::framebuffer::init_writer(frame_buffer);
 
     interrupts::interrupts::init_idt();
-    my_info!("IDT initialized");
+    println!("IDT initialized");
 
     unsafe { interrupts::interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
