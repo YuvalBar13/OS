@@ -82,7 +82,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
                 HandleControl::Ignore)
             );
     }
-    
+
 
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);

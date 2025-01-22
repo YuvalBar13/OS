@@ -11,8 +11,9 @@ use noto_sans_mono_bitmap::{
     get_raster, get_raster_width, FontWeight, RasterHeight, RasterizedChar,
 };
 
-pub static DEFAULT_COLOR: Color = Color { red: 255, green: 255, blue: 255 };
-pub static ERROR_COLOR: Color = Color { red: 255, green: 0, blue: 0 };
+pub const DEFAULT_COLOR: Color = Color { red: 255, green: 255, blue: 255 };
+pub const ERROR_COLOR: Color = Color { red: 255, green: 0, blue: 0 };
+pub const BACKGROUND_COLOR: Color = Color { red: 0, green: 0, blue: 0 };
 
 // Global writer instance using OnceCell
 pub static WRITER: OnceCell<Mutex<Writer>> = OnceCell::uninit();
@@ -26,7 +27,7 @@ pub fn init_writer(framebuffer: FrameBuffer) {
         FontWeight::Regular,
     );
     WRITER.init_once(|| Mutex::new(writer));
-    WRITER.get().expect("Writer not initialized").lock().clear_screen_with_color(Color { red: 0, green: 0, blue: 0 });
+    WRITER.get().expect("Writer not initialized").lock().clear_screen_with_color(BACKGROUND_COLOR.clone());
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,12 @@ pub struct Color {
     pub blue: u8,
 }
 
+impl Color
+{
+    pub fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self { red, green, blue }
+    }
+}
 pub fn set_pixel_in(framebuffer: &mut FrameBuffer, position: Position, color: Color) {
     let info = framebuffer.info();
 
@@ -245,7 +252,7 @@ impl Writer {
                     x,
                     y: info.height - char_height + y,
                 };
-                set_pixel_in(&mut self.buffer, pos, Color { red: 0, green: 0, blue: 0 });
+                set_pixel_in(&mut self.buffer, pos, BACKGROUND_COLOR);
             }
         }
 
@@ -266,7 +273,7 @@ impl Writer {
                         x: self.column_position * char_width + x,
                         y: self.row_position * char_height + y,
                     };
-                    set_pixel_in(&mut self.buffer, pos, Color { red: 0, green: 0, blue: 0 });
+                    set_pixel_in(&mut self.buffer, pos, BACKGROUND_COLOR);
                 }
             }
         }
@@ -283,3 +290,22 @@ impl core::fmt::Write for Writer {
     }
 }
 
+pub struct MyFrameBuffer {
+    buffer: FrameBuffer,
+}
+
+impl MyFrameBuffer {
+    pub  fn shallow_copy(&self) -> MyFrameBuffer {
+        MyFrameBuffer {
+            buffer: unsafe {FrameBuffer::new(self.buffer.buffer().as_ptr() as *mut u8 as u64, self.buffer.info())},
+        }
+    }
+    pub fn new(buffer: FrameBuffer) -> Self {
+        MyFrameBuffer {
+            buffer,
+        }
+    }
+    pub fn get_buffer(self) -> FrameBuffer {
+        self.buffer
+    }
+}
