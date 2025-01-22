@@ -27,7 +27,7 @@ pub fn init_writer(framebuffer: FrameBuffer) {
         FontWeight::Regular,
     );
     WRITER.init_once(|| Mutex::new(writer));
-    WRITER.get().expect("Writer not initialized").lock().clear_screen_with_color(BACKGROUND_COLOR.clone());
+    WRITER.get().expect("Writer not initialized").lock().clear_screen();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +165,7 @@ impl Writer {
         self.font_height.val()
     }
 
-    pub fn clear_screen_with_color(&mut self, color: Color) {
+    pub fn clear_screen(&mut self ) {
         let info = self.buffer.info();
 
         for y in 0..info.height {
@@ -173,7 +173,7 @@ impl Writer {
                 set_pixel_in(
                     &mut self.buffer,
                     Position { x, y },
-                    color
+                    BACKGROUND_COLOR
                 );
             }
         }

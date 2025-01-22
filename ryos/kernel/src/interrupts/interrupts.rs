@@ -24,9 +24,6 @@ impl InterruptIndex {
         self as u8
     }
 
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
-    }
 }
 
 lazy_static! {

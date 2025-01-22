@@ -2,12 +2,11 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
-use core::fmt::Write;
 use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::Point;
+use embedded_graphics::prelude::{OriginDimensions, Point};
 use tinytga::Tga;
 
 bootloader_api::entry_point!(kernel_main);
@@ -40,10 +39,11 @@ fn init(boot_info: &'static mut bootloader_api::BootInfo)
     let frame_buffer = frame_buffer_optional.take().unwrap();
     let my_frame_buffer = terminal::output::framebuffer::MyFrameBuffer::new(frame_buffer);
     terminal::output::framebuffer::init_writer(my_frame_buffer.shallow_copy().get_buffer());
+
     let mut frame_buffer =  my_frame_buffer.get_buffer();
     let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
+    //print_image(&mut display);
     print_logo();
-
     init_interrupts();
 }
 
@@ -60,13 +60,24 @@ pub fn hlt_loop() -> ! {
     }
 }
 
-fn print_image(display: &mut terminal::output::framebuffer::Display)
-{
+fn print_image(display: &mut terminal::output::framebuffer::Display) {
     let data = include_bytes!("logo_type11_bl.tga");
     let tga: Tga<Rgb888> = Tga::from_slice(data).unwrap();
-    let image = Image::new(&tga, Point::zero());    // at the second arg should put the x and y of the image
-    image.draw(display).unwrap();
+    let mut current_y = 0;
 
+    while current_y < display.size().height {
+        let image = Image::new(&tga, Point::new(0, current_y as i32));
+        image.draw(display).unwrap();
+        current_y += 1;
+        // Optional: Add delay between movements
+        //spin_loop();
+    }
+}
+
+fn spin_loop(iterations: u32) {
+    for _ in 0..iterations {
+        core::hint::spin_loop();
+    }
 }
 use terminal::output::framebuffer::Color;
 fn print_logo() {
@@ -77,7 +88,7 @@ fn print_logo() {
     let color5 = Color::new(255, 165, 0);  // Orange
     let color6 = Color::new(128, 0, 128);  // Purple
 
-    println!("\n\n\n\n");
+    println!("\n\n");
     change_writer_color(color1);
 
     println!("                          /$$$$$$$  /$$     /$$ /$$$$$$   /$$$$$$ ");
