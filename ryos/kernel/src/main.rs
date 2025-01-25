@@ -9,10 +9,12 @@ use bootloader_api::BootInfo;
 use embedded_graphics::Drawable;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::Point;
+use embedded_graphics::prelude::{PixelIteratorExt, Point};
 use tinytga::Tga;
 use x86_64::VirtAddr;
 use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -25,13 +27,8 @@ mod terminal;
 mod memory;
 mod heap_alloc;
 
-// ↓ this replaces the `_start` function ↓
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-
-    let allocated = Box::new(5);
-    println!("{}", allocated);
-
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
@@ -54,10 +51,9 @@ fn init(boot_info: &'static mut BootInfo) {
 
     let mut frame_buffer = my_frame_buffer.get_buffer();
     let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
-    //print_image(&mut display);
+
     print_logo();
     init_memory(boot_info);
-
     init_interrupts();
 }
 
@@ -76,8 +72,7 @@ fn init_memory(boot_info: &'static mut BootInfo)
         memory::paging::BootInfoFrameAllocator::init(&boot_info.memory_regions)
     };
 
-    heap_alloc::alloc::init_heap(&mut frame_allocator, &mut mapper);
-
+    heap_alloc::alloc::init_heap(&mut frame_allocator, &mut mapper).expect("error initializing heap");
 
 
 }
@@ -94,13 +89,6 @@ fn print_image(display: &mut terminal::output::framebuffer::Display) {
     let mut current_y = 0;
     let image = Image::new(&tga, Point::new(0, current_y as i32));
     image.draw(display).unwrap();
-    // while current_y < display.size().height {
-    //     let image = Image::new(&tga, Point::new(0, current_y as i32));
-    //     image.draw(display).unwrap();
-    //     current_y += 1;
-    //     // Optional: Add delay between movements
-    //     //spin_loop();
-    // }
 }
 
 fn spin_loop(iterations: u32) {
