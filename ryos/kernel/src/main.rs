@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
+extern crate alloc;
+
 use core::panic::PanicInfo;
 use bootloader_api::BootInfo;
 use embedded_graphics::Drawable;
@@ -10,6 +12,7 @@ use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::Point;
 use tinytga::Tga;
 use x86_64::VirtAddr;
+use alloc::boxed::Box;
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -25,6 +28,9 @@ mod heap_alloc;
 // ↓ this replaces the `_start` function ↓
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
+
+    let allocated = Box::new(5);
+    println!("{}", allocated);
 
     loop {
         terminal::interface::run();
@@ -70,7 +76,9 @@ fn init_memory(boot_info: &'static mut BootInfo)
         memory::paging::BootInfoFrameAllocator::init(&boot_info.memory_regions)
     };
 
-    heap_alloc::alloc::init_heap(&mut frame_allocator);
+    heap_alloc::alloc::init_heap(&mut frame_allocator, &mut mapper);
+
+
 
 }
 
