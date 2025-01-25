@@ -1,4 +1,4 @@
-use heapless::String;
+use alloc::string::String;
 use crate::{print, println};
 use lazy_static::lazy_static;
 use crate::terminal::output::framebuffer::WRITER;
@@ -6,7 +6,7 @@ pub const BUFFER_SIZE: usize = 100;
 
 #[derive(Default)]
 pub struct InputBuffer {
-    buffer: String<BUFFER_SIZE>,
+    buffer: String,
     is_listening: bool,
 }
 
@@ -38,16 +38,10 @@ impl InputBuffer {
             WRITER.get().expect("Writer not initialized").lock().backspace();
             return true;
         }
+        self.buffer.push(character);
+        print!("{}", character);
+        true
 
-        if self.buffer.len() < self.buffer.capacity() {
-            self.buffer.push(character).ok();
-            print!("{}", character);
-            return true;
-        } else {
-            println!("Buffer is full");
-        }
-
-        false
     }
 
     fn end_listening(&mut self)
@@ -67,7 +61,7 @@ impl InputBuffer {
         }
     }
     
-    pub fn get_input(&mut self) -> String<BUFFER_SIZE> {
+    pub fn get_input(&mut self) -> String {
         self.listen();
 
         let input = self.buffer.clone();
