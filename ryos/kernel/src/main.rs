@@ -20,6 +20,7 @@ bootloader_api::entry_point!(kernel_main, config = &BOOT_CONFIG);
 mod interrupts;
 mod terminal;
 mod memory;
+mod heap_alloc;
 
 // ↓ this replaces the `_start` function ↓
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
@@ -68,6 +69,8 @@ fn init_memory(boot_info: &'static mut BootInfo)
     let mut frame_allocator = unsafe {
         memory::paging::BootInfoFrameAllocator::init(&boot_info.memory_regions)
     };
+
+    heap_alloc::alloc::init_heap(&mut frame_allocator);
 
 }
 
