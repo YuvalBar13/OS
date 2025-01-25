@@ -7,9 +7,8 @@ use bootloader_api::BootInfo;
 use embedded_graphics::Drawable;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::{OriginDimensions, PixelIteratorExt, Point};
+use embedded_graphics::prelude::Point;
 use tinytga::Tga;
-use x86_64::structures::paging::Page;
 use x86_64::VirtAddr;
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
