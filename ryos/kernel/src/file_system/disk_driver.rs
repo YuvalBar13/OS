@@ -1,10 +1,10 @@
 //DISK DRIVER
 //Driver for ATA disk supporting PIO MODE
-use spin::Mutex;
-use core::arch::asm;
-use pc_keyboard::KeyCode::Mute;
 use crate::println;
+use core::arch::asm;
+use spin::Mutex;
 
+pub const SECTOR_SIZE: usize = 512;
 //Warning! Mutable static here
 pub static mut DISK: Mutex<Disk> = Mutex::new(Disk { enabled: false });
 
@@ -21,7 +21,7 @@ const STATUS_COMMAND_REGISTER: u16 = 0x1f7;
 
 //read write command codes
 const READ_COMMAND: u8 = 0x20;
-//const WRITE_COMMAND: u8 = 0x30;
+const WRITE_COMMAND: u8 = 0x30;
 
 //status register bits
 const STATUS_BSY: u8 = 0b10000000;
@@ -47,7 +47,7 @@ impl Disk {
 
         unsafe {
             //disable ata interrupt
-            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010 as u8);
+            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010u8);
 
             //setup registers
             asm!("out dx, al", in("dx") SECTOR_COUNT_REGISTER, in("al") sectors as u8); //number of setcors to read
@@ -64,7 +64,7 @@ impl Disk {
         let mut target_pointer = target;
         while sectors_left > 0 {
             //a sector is 512 byte, buffer size is 4 byte, so loop for 512/4
-            for _i in 0..128 {
+            for _i in 0..SECTOR_SIZE/4 {
                 //wait until not busy
                 while self.is_busy() {}
 
@@ -81,6 +81,56 @@ impl Disk {
                     core::ptr::write_unaligned(target_pointer as *mut u32, buffer);
 
                     target_pointer = target_pointer.byte_add(4);
+                }
+            }
+            sectors_left -= 1;
+        }
+
+        self.reset();
+    }
+    pub fn write<T>(&self, source: *const T, lba: u64, sectors: u16) {
+        if !self.enabled {
+            println!("[ERROR] Cannot write! Disk not enabled");
+            return;
+        }
+
+        //wait until not busy
+        while self.is_busy() {}
+
+        unsafe {
+            //disable ata interrupt
+            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010 as u8);
+
+            //setup registers
+            asm!("out dx, al", in("dx") SECTOR_COUNT_REGISTER, in("al") sectors as u8); //number of sectors to write
+            asm!("out dx, al", in("dx") LBA_LOW_REGISTER, in("al") lba as u8); //low 8 bits of lba
+            asm!("out dx, al", in("dx") LBA_MID_REGISTER, in("al") (lba >> 8) as u8); //next 8 bits of lba
+            asm!("out dx, al", in("dx") LBA_HIGH_REGISTER, in("al") (lba >> 16) as u8); //next 8 bits of lba
+            asm!("out dx, al", in("dx") DRIVE_REGISTER, in("al") (0xE0 | ((lba >> 24) & 0xF)) as u8); //0xe0 (master drive) ORed with highest 4 bits of lba
+
+            //send write command to port
+            asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") WRITE_COMMAND);
+        }
+
+        let mut sectors_left = sectors;
+        let mut source_pointer = source;
+        while sectors_left > 0 {
+            //wait until not busy
+            while self.is_busy() {}
+
+            //wait until ready
+            while !self.is_ready() {}
+
+            //a sector is 512 bytes, buffer size is 4 bytes, so loop for 512/4
+            for _i in 0..SECTOR_SIZE/4 {
+                unsafe {
+                    //read 32 bits from source
+                    let buffer = core::ptr::read_unaligned(source_pointer as *const u32);
+
+                    //write buffer to controller
+                    asm!("out dx, eax", in("dx") DATA_REGISTER, in("eax") buffer);
+
+                    source_pointer = source_pointer.byte_add(4);
                 }
             }
             sectors_left -= 1;
@@ -132,8 +182,8 @@ impl Disk {
 
     pub fn reset(&self) {
         unsafe {
-            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000110 as u8);
-            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010 as u8);
+            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000110u8);
+            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010u8);
         }
     }
 }
