@@ -45,20 +45,8 @@ impl Disk {
         //wait until not busy
         while self.is_busy() {}
 
-        unsafe {
-            //disable ata interrupt
-            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010u8);
 
-            //setup registers
-            asm!("out dx, al", in("dx") SECTOR_COUNT_REGISTER, in("al") sectors as u8); //number of setcors to read
-            asm!("out dx, al", in("dx") LBA_LOW_REGISTER, in("al") lba as u8); //low 8 bits of lba
-            asm!("out dx, al", in("dx") LBA_MID_REGISTER, in("al") (lba >> 8) as u8); //next 8 bits of lba
-            asm!("out dx, al", in("dx") LBA_HIGH_REGISTER, in("al") (lba >> 16) as u8); //next 8 bits of lba
-            asm!("out dx, al", in("dx") DRIVE_REGISTER, in("al") (0xE0 | ((lba >> 24) & 0xF)) as u8); //0xe0 (master drive) ORed with highest 4 bits of lba
-
-            //send read command to port
-            asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") READ_COMMAND);
-        }
+        self.send_command(lba, sectors, true);
 
         let mut sectors_left = sectors;
         let mut target_pointer = target;
@@ -97,20 +85,7 @@ impl Disk {
         //wait until not busy
         while self.is_busy() {}
 
-        unsafe {
-            //disable ata interrupt
-            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010 as u8);
-
-            //setup registers
-            asm!("out dx, al", in("dx") SECTOR_COUNT_REGISTER, in("al") sectors as u8); //number of sectors to write
-            asm!("out dx, al", in("dx") LBA_LOW_REGISTER, in("al") lba as u8); //low 8 bits of lba
-            asm!("out dx, al", in("dx") LBA_MID_REGISTER, in("al") (lba >> 8) as u8); //next 8 bits of lba
-            asm!("out dx, al", in("dx") LBA_HIGH_REGISTER, in("al") (lba >> 16) as u8); //next 8 bits of lba
-            asm!("out dx, al", in("dx") DRIVE_REGISTER, in("al") (0xE0 | ((lba >> 24) & 0xF)) as u8); //0xe0 (master drive) ORed with highest 4 bits of lba
-
-            //send write command to port
-            asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") WRITE_COMMAND);
-        }
+        self.send_command(lba, sectors, false);
 
         let mut sectors_left = sectors;
         let mut source_pointer = source;
@@ -139,6 +114,31 @@ impl Disk {
         self.reset();
     }
 
+    fn send_command(&self, lba: u64, sectors: u16, read: bool) {
+        unsafe {
+            //disable ata interrupt
+            asm!("out dx, al", in("dx") 0x3f6, in("al") 0b00000010u8);
+
+            //setup registers
+            asm!("out dx, al", in("dx") SECTOR_COUNT_REGISTER, in("al") sectors as u8); //number of sectors to write
+            asm!("out dx, al", in("dx") LBA_LOW_REGISTER, in("al") lba as u8); //low 8 bits of lba
+            asm!("out dx, al", in("dx") LBA_MID_REGISTER, in("al") (lba >> 8) as u8); //next 8 bits of lba
+            asm!("out dx, al", in("dx") LBA_HIGH_REGISTER, in("al") (lba >> 16) as u8); //next 8 bits of lba
+            asm!("out dx, al", in("dx") DRIVE_REGISTER, in("al") (0xE0 | ((lba >> 24) & 0xF)) as u8); //0xe0 (master drive) ORed with highest 4 bits of lba
+
+            //send write command to port
+            if read
+            {
+                //send read command to port
+                asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") READ_COMMAND);
+            }
+            else {
+                //send write command to port
+                asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") WRITE_COMMAND);
+
+            }
+        }
+    }
     //check if disk is busy
     pub fn is_busy(&self) -> bool {
         let status: u8;

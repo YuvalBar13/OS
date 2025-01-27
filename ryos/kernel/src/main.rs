@@ -70,6 +70,7 @@ fn test_disk_driver()
             eprintln!("DEBUG: Buffer: {}", buffer[0]);
             return;
         }
+        println!("[!] Disk working!");
         println!("DEBUG: Buffer: {}", buffer[0]);
     }
 
