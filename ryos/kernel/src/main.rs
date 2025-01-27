@@ -10,11 +10,10 @@ use embedded_graphics::Drawable;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::{PixelIteratorExt, Point};
+use spin::Mutex;
 use tinytga::Tga;
 use x86_64::VirtAddr;
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::vec::Vec;
+
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -26,9 +25,45 @@ mod interrupts;
 mod terminal;
 mod memory;
 mod heap_alloc;
+mod file_system;
 
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
+    // Test function to read first sector and check boot signature
+    pub fn test_boot_sector() {
+        // Create a buffer to hold the sector (512 bytes)
+        let mut buffer = [0u8; 512];
+
+        unsafe {
+            // Access the mutex through raw pointer to avoid reference issues
+            let disk_ptr = &raw const DISK as *const Mutex<Disk>;
+
+            // Check disk
+            (*disk_ptr).lock().check();
+
+            if !(*disk_ptr).lock().enabled {
+                println!("Disk not available!");
+                return;
+            }
+
+            // Read first sector (LBA 0)
+            (*disk_ptr).lock().read(buffer.as_mut_ptr(), 0, 1);
+
+            // Check last two bytes (boot signature)
+            let signature_1 = buffer[510];
+            let signature_2 = buffer[511];
+
+            println!("Boot signature: 0x{:02X} 0x{:02X}", signature_1, signature_2);
+
+            if signature_1 == 0x55 && signature_2 == 0xAA {
+                println!("Valid boot signature found!");
+            } else {
+                println!("Invalid boot signature!");
+            }
+        }
+    }
+    test_boot_sector();
+
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
@@ -51,7 +86,6 @@ fn init(boot_info: &'static mut BootInfo) {
 
     let mut frame_buffer = my_frame_buffer.get_buffer();
     let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
-
     print_logo();
     init_memory(boot_info);
     init_interrupts();
@@ -97,6 +131,8 @@ fn spin_loop(iterations: u32) {
     }
 }
 use terminal::output::framebuffer::Color;
+use crate::file_system::disk_driver::{Disk, DISK};
+
 fn print_logo() {
     let color1 = Color::new(255, 0, 0); // Red
     let color2 = Color::new(0, 255, 0); // Green
