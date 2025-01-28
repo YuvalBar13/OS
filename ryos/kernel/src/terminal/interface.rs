@@ -1,7 +1,6 @@
 use alloc::vec::Vec;
 use crate::terminal::input::buffer::BUFFER;
 use crate::{eprintln, print, print_logo, println};
-use x86_64::instructions::port::Port;
 
 pub fn run() {
     print!(">>> ");

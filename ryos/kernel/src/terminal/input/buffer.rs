@@ -1,8 +1,7 @@
 use alloc::string::String;
-use crate::{print, println};
+use crate::{print};
 use lazy_static::lazy_static;
 use crate::terminal::output::framebuffer::WRITER;
-pub const BUFFER_SIZE: usize = 100;
 
 #[derive(Default)]
 pub struct InputBuffer {

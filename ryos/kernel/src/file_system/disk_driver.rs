@@ -1,6 +1,5 @@
 //DISK DRIVER
 //Driver for ATA disk supporting PIO MODE
-use crate::println;
 use core::arch::asm;
 use spin::Mutex;
 use crate::file_system::errors::FileSystemError;

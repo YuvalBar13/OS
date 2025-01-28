@@ -4,19 +4,17 @@
 
 extern crate alloc;
 
+use crate::file_system::disk_driver::SECTOR_SIZE;
+use crate::file_system::fat16::{FATEntry, FAtApi};
 use bootloader_api::BootInfo;
 use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::{PixelIteratorExt, Point};
-use spin::Mutex;
+use terminal::output::framebuffer::Color;
 use tinytga::Tga;
 use x86_64::VirtAddr;
-use crate::file_system::disk_driver::{DISK, Disk, DiskManager, SECTOR_SIZE};
-use crate::file_system::errors::FileSystemError;
-use crate::file_system::fat16::{FAT, FATEntry, FAtApi};
-use terminal::output::framebuffer::Color;
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -33,16 +31,7 @@ mod terminal;
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
 
-    let mut fat_api = FAtApi::new();
-    fat_api.add_entry(FATEntry::new_eof());
-
-    fat_api.save().expect("Error saving FAT table");
-
-    println!("DEBUG First {}", fat_api.first().as_bin());
-
-    let mut fat = FAtApi::new().load().expect("Error loading FAT table");
-    println!("DEBUG First {}", fat.first().as_bin());
-
+    test_file_system();
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
@@ -84,7 +73,19 @@ fn test_disk_driver() {
 }
 
 
-
+fn test_file_system() {
+    let mut fat_api = FAtApi::new();
+    let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
+    match fat_api.new_entry(&test_data)
+    {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Error adding entry to disk {:?}", e);
+        }
+    }
+    let data = fat_api.get_data(1).expect("Error reading from disk");
+    println!("DEBUG: Buffer: {}", data[123]);
+}
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
 
@@ -136,7 +137,6 @@ fn spin_loop(iterations: u32) {
         core::hint::spin_loop();
     }
 }
-
 
 fn print_logo() {
     let color1 = Color::new(255, 0, 0); // Red
