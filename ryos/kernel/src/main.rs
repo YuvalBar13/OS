@@ -4,8 +4,8 @@
 
 extern crate alloc;
 
-use core::panic::PanicInfo;
 use bootloader_api::BootInfo;
+use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
 use embedded_graphics::image::Image;
 use embedded_graphics::pixelcolor::Rgb888;
@@ -13,7 +13,10 @@ use embedded_graphics::prelude::{PixelIteratorExt, Point};
 use spin::Mutex;
 use tinytga::Tga;
 use x86_64::VirtAddr;
-
+use crate::file_system::disk_driver::{DISK, Disk, DiskManager, SECTOR_SIZE};
+use crate::file_system::errors::FileSystemError;
+use crate::file_system::fat16::{FAT, FATEntry, FAtApi};
+use terminal::output::framebuffer::Color;
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -21,15 +24,25 @@ static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     config
 };
 bootloader_api::entry_point!(kernel_main, config = &BOOT_CONFIG);
-mod interrupts;
-mod terminal;
-mod memory;
-mod heap_alloc;
 mod file_system;
+mod heap_alloc;
+mod interrupts;
+mod memory;
+mod terminal;
 
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-    test_disk_driver();
+
+    let mut fat_api = FAtApi::new();
+    fat_api.add_entry(FATEntry::new_eof());
+
+    fat_api.save().expect("Error saving FAT table");
+
+    println!("DEBUG First {}", fat_api.first().as_bin());
+
+    let mut fat = FAtApi::new().load().expect("Error loading FAT table");
+    println!("DEBUG First {}", fat.first().as_bin());
+
     loop {
         terminal::interface::run();
         x86_64::instructions::hlt();
@@ -42,8 +55,7 @@ fn panic(_info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-fn test_disk_driver()
-{
+fn test_disk_driver() {
     let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
     let mut buffer = [0u8; SECTOR_SIZE];
 
@@ -55,17 +67,24 @@ fn test_disk_driver()
 
     match disk_manager.write(test_data.as_ptr(), 1, 1) {
         Ok(_) => {}
-        Err(e) => {eprintln!("Error writing to disk {:?}", e); return;}
+        Err(e) => {
+            eprintln!("Error writing to disk {:?}", e);
+            return;
+        }
     }
-    match disk_manager.read(buffer.as_mut_ptr(), 1,1) {
-
+    match disk_manager.read(buffer.as_mut_ptr(), 1, 1) {
         Ok(_) => {}
-        Err(e) => {eprintln!("Error reading from disk {:?}", e); return;}
+        Err(e) => {
+            eprintln!("Error reading from disk {:?}", e);
+            return;
+        }
     }
 
     println!("DEBUG: Buffer: {}", buffer[0]);
-
 }
+
+
+
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
 
@@ -88,17 +107,14 @@ fn init_interrupts() {
     x86_64::instructions::interrupts::enable();
 }
 
-fn init_memory(boot_info: &'static mut BootInfo)
-{
+fn init_memory(boot_info: &'static mut BootInfo) {
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset.clone().take().unwrap());
     let mut mapper = unsafe { memory::paging::init(phys_mem_offset) };
-    let mut frame_allocator = unsafe {
-        memory::paging::BootInfoFrameAllocator::init(&boot_info.memory_regions)
-    };
+    let mut frame_allocator =
+        unsafe { memory::paging::BootInfoFrameAllocator::init(&boot_info.memory_regions) };
 
-    heap_alloc::alloc::init_heap(&mut frame_allocator, &mut mapper).expect("error initializing heap");
-
-
+    heap_alloc::alloc::init_heap(&mut frame_allocator, &mut mapper)
+        .expect("error initializing heap");
 }
 
 pub fn hlt_loop() -> ! {
@@ -120,9 +136,7 @@ fn spin_loop(iterations: u32) {
         core::hint::spin_loop();
     }
 }
-use terminal::output::framebuffer::Color;
-use crate::file_system::disk_driver::{Disk, DISK, SECTOR_SIZE};
-use crate::file_system::errors::FileSystemError;
+
 
 fn print_logo() {
     let color1 = Color::new(255, 0, 0); // Red
