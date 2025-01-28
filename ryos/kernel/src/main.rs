@@ -45,41 +45,26 @@ fn panic(_info: &PanicInfo) -> ! {
 fn test_disk_driver()
 {
     let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
-    unsafe {
-        // Access the mutex through raw pointer to avoid reference issues
-        let disk_ptr = &raw const DISK as *const Mutex<Disk>;
-        (*disk_ptr).lock().check();
+    let mut buffer = [0u8; SECTOR_SIZE];
 
-        if !(*disk_ptr).lock().enabled {
-            println!("Disk not available!");
-            loop {
-                x86_64::instructions::hlt();
-            };
-        }
-        (*disk_ptr).lock().write(test_data.as_ptr(), 1, 1);
+    let mut disk_manager = file_system::disk_driver::DiskManager::new();
+    match disk_manager.check() {
+        Ok(..) => println!("[!] Disk working!"),
+        Err(e) => println!("[!] Disk not working: {:?}", e),
+    };
 
-        if !(*disk_ptr).lock().enabled {
-            println!("Disk not available!");
-            return;
-        }
-        let mut buffer = [0u8; SECTOR_SIZE];
-        // Read first sector (LBA 0)
-        (*disk_ptr).lock().read(buffer.as_mut_ptr(), 1, 1);
+    match disk_manager.write(test_data.as_ptr(), 1, 1) {
+        Ok(_) => {}
+        Err(e) => {eprintln!("Error writing to disk {:?}", e); return;}
+    }
+    match disk_manager.read(buffer.as_mut_ptr(), 1,1) {
 
-        if(buffer[0] != 0x55) {
-            eprintln!("DEBUG: Buffer: {}", buffer[0]);
-            return;
-        }
-        println!("[!] Disk working!");
-        println!("DEBUG: Buffer: {}", buffer[0]);
+        Ok(_) => {}
+        Err(e) => {eprintln!("Error reading from disk {:?}", e); return;}
     }
 
+    println!("DEBUG: Buffer: {}", buffer[0]);
 
-    unsafe {
-
-
-
-    }
 }
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
@@ -137,6 +122,7 @@ fn spin_loop(iterations: u32) {
 }
 use terminal::output::framebuffer::Color;
 use crate::file_system::disk_driver::{Disk, DISK, SECTOR_SIZE};
+use crate::file_system::errors::FileSystemError;
 
 fn print_logo() {
     let color1 = Color::new(255, 0, 0); // Red

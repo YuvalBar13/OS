@@ -3,7 +3,7 @@
 use crate::println;
 use core::arch::asm;
 use spin::Mutex;
-
+use crate::file_system::errors::FileSystemError;
 pub const SECTOR_SIZE: usize = 512;
 //Warning! Mutable static here
 pub static mut DISK: Mutex<Disk> = Mutex::new(Disk { enabled: false });
@@ -30,21 +30,20 @@ const STATUS_RDY: u8 = 0b01000000;
 //const STATUS_DRQ: u8 = 0b00001000;
 //const STATUS_ERR: u8 = 0b00000001;
 
+
 pub struct Disk {
     pub enabled: bool,
 }
 
 impl Disk {
     //read multiple sectors from lba to specified target
-    pub fn read<T>(&self, target: *mut T, lba: u64, sectors: u16) {
+    pub fn read<T>(&self, target: *mut T, lba: u64, sectors: u16) -> Result<(), FileSystemError> {
         if !self.enabled {
-            println!("[ERROR] Cannot read! Disk not enabled");
-            return;
+            return Err(FileSystemError::DiskNotAvailable);
         }
 
         //wait until not busy
         while self.is_busy() {}
-
 
         self.send_command(lba, sectors, true);
 
@@ -52,7 +51,7 @@ impl Disk {
         let mut target_pointer = target;
         while sectors_left > 0 {
             //a sector is 512 byte, buffer size is 4 byte, so loop for 512/4
-            for _i in 0..SECTOR_SIZE/4 {
+            for _i in 0..SECTOR_SIZE / 4 {
                 //wait until not busy
                 while self.is_busy() {}
 
@@ -75,11 +74,11 @@ impl Disk {
         }
 
         self.reset();
+        Ok(())
     }
-    pub fn write<T>(&self, source: *const T, lba: u64, sectors: u16) {
+    pub fn write<T>(&self, source: *const T, lba: u64, sectors: u16) -> Result<(), FileSystemError> {
         if !self.enabled {
-            println!("[ERROR] Cannot write! Disk not enabled");
-            return;
+            return  Err(FileSystemError::DiskNotAvailable)
         }
 
         //wait until not busy
@@ -97,7 +96,7 @@ impl Disk {
             while !self.is_ready() {}
 
             //a sector is 512 bytes, buffer size is 4 bytes, so loop for 512/4
-            for _i in 0..SECTOR_SIZE/4 {
+            for _i in 0..SECTOR_SIZE / 4 {
                 unsafe {
                     //read 32 bits from source
                     let buffer = core::ptr::read_unaligned(source_pointer as *const u32);
@@ -112,6 +111,7 @@ impl Disk {
         }
 
         self.reset();
+        Ok(())
     }
 
     fn send_command(&self, lba: u64, sectors: u16, read: bool) {
@@ -127,15 +127,12 @@ impl Disk {
             asm!("out dx, al", in("dx") DRIVE_REGISTER, in("al") (0xE0 | ((lba >> 24) & 0xF)) as u8); //0xe0 (master drive) ORed with highest 4 bits of lba
 
             //send write command to port
-            if read
-            {
+            if read {
                 //send read command to port
                 asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") READ_COMMAND);
-            }
-            else {
+            } else {
                 //send write command to port
                 asm!("out dx, al", in("dx") STATUS_COMMAND_REGISTER, in("al") WRITE_COMMAND);
-
             }
         }
     }
@@ -162,7 +159,7 @@ impl Disk {
     }
 
     //check if ata drive is working
-    pub fn check(&mut self) {
+    pub fn check(&mut self) -> Result<(), FileSystemError> {
         let status: u8;
         unsafe {
             asm!("in al, dx", out("al") status, in("dx") STATUS_COMMAND_REGISTER);
@@ -170,13 +167,10 @@ impl Disk {
 
         if status != 0 && status != 0xff {
             self.enabled = true;
-            println!("[!] ATA drive found! Status register: {:X}", status);
+            Ok(())
         } else {
             self.enabled = false;
-            println!(
-                "[ERROR] ATA drive not working! Status register: {:X}",
-                status
-            );
+            Err(FileSystemError::DiskNotAvailable)
         }
     }
 
@@ -187,3 +181,33 @@ impl Disk {
         }
     }
 }
+
+
+pub struct DiskManager
+{
+    disk: *const Mutex<Disk>
+}
+
+impl DiskManager {
+    // Public safe interface methods
+    pub fn new() -> Self {
+        unsafe { DiskManager { disk: &raw const DISK as *const Mutex<Disk> } }
+    }
+
+    pub fn check(&self) -> Result<(), FileSystemError> {
+        unsafe { (*self.disk).lock().check() }
+    }
+
+    pub fn write(&self, buffer: *const u8, sector: u64, count: u16) -> Result<(), FileSystemError> {
+        unsafe { (*self.disk).lock().write(buffer, sector, count) }
+    }
+
+    pub fn read(&self, buffer: *mut u8, sector: u64, count: u16) -> Result<(), FileSystemError> {
+        unsafe { (*self.disk).lock().read(buffer, sector, count) }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        unsafe {(*self.disk).lock().enabled }
+    }
+}
+
