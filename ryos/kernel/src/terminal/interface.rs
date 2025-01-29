@@ -14,7 +14,8 @@ pub fn run(fs: &mut FAtApi) {
 
 
 pub fn handle_command(command: &str, fs: &mut FAtApi) {
-    let parts: Vec<&str> = command.splitn(3, ' ').collect();
+    let parts: Vec<&str> = command.splitn(3, ' ').filter(|s| !s.is_empty()).collect();
+
     match parts[0] {
         "shutdown" => shutdown(),
         "reboot" => reboot(),
@@ -140,6 +141,8 @@ fn help() {
     println!("reboot - reboot the computer");
     println!("cat - print the contents of a file");
     println!("write - write to a file");
+    println!("ls - list the contents of the disk");
+    println!("touch - create a new file");
 }
 
 fn to_buffer(str: &str) -> [u8; SECTOR_SIZE] {
