@@ -92,6 +92,9 @@ fn test_file_system() {
             eprintln!("Error writing to disk {:?}", e);
         }
     }
+    fat_api.change_data(1, &[0x56u8; SECTOR_SIZE]).expect("Error writing to disk");
+    let data = fat_api.get_data(1).expect("Error reading from disk");
+    println!("DEBUG: Buffer: {}", data[123]);
 }
 
 fn init(boot_info: &'static mut BootInfo) {

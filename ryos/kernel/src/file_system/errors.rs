@@ -7,4 +7,5 @@ pub enum FileSystemError {
     IndexOutOfBounds,
     UnusedSector,
     DiskNotAvailable,
+    BadSector,
 }

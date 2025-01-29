@@ -1,6 +1,6 @@
 use crate::file_system::disk_driver::{DiskManager, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
-use crate::file_system::errors::FileSystemError::{IndexOutOfBounds, OutOfSpace, UnusedSector};
+use crate::file_system::errors::FileSystemError::{BadSector, IndexOutOfBounds, OutOfSpace, UnusedSector};
 use crate::println;
 const FIRST_USABLE_SECTOR: u16 = 100;
 
@@ -26,10 +26,13 @@ impl FATEntry {
         FATEntry(Self::TYPE_EOF)
     }
 
-    pub fn new_used(sector: u16) -> Self {
+    pub fn new_used(sector: u16) -> Result<Self, FileSystemError> {
         // Ensure next_sector fits in 12 bits
+        if sector > Self::SECTOR_MASK {
+            return Err(BadSector)
+        }
         let next = sector & Self::SECTOR_MASK;
-        FATEntry(Self::TYPE_USED | next)
+        Ok(FATEntry(Self::TYPE_USED | next))
     }
 
     pub fn get_type(&self) -> u16 {
@@ -178,6 +181,11 @@ impl FAtApi {
         Ok(buffer)
 
     }
+
+    pub fn change_data(&mut self, entry_index: usize, buffer: &[u8; SECTOR_SIZE]) -> Result<(), FileSystemError> {
+        let sector = self.get_sector(entry_index)?;
+        self.disk_manager.write(buffer.as_ptr(), sector as u64, 1)
+    }
     pub fn get_sector(&self, entry_index: usize) -> Result<u16, FileSystemError> {
         let entry = self.get_entry(entry_index)?;
         entry.get_sector()
@@ -187,12 +195,12 @@ impl FAtApi {
         let index = self.table.first_free_entry()?;
         let mut sector: u16 = FIRST_USABLE_SECTOR;
         if(index != 1) { // for the first entry
-            let sector = self.get_sector(index - 1)?;
+            sector = self.get_sector(index - 1)?;
 
         }
 
         // when adding clusters should change the logic here
         self.disk_manager.write(buffer.as_ptr(), sector as u64 + 1, 1)?;
-        self.add_entry(FATEntry::new_used(sector + 1))
+        self.add_entry(FATEntry::new_used(sector + 1)?)
     }
 }
