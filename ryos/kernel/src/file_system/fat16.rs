@@ -1,8 +1,9 @@
+use alloc::string::String;
 use crate::file_system::disk_driver::{DiskManager, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
 use crate::file_system::errors::FileSystemError::{BadSector, IndexOutOfBounds, OutOfSpace, UnusedSector};
 use crate::println;
-const FIRST_USABLE_SECTOR: u16 = 100;
+const FIRST_USABLE_SECTOR: u16 = 120;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -28,10 +29,10 @@ impl FATEntry {
 
     pub fn new_used(sector: u16) -> Result<Self, FileSystemError> {
         // Ensure next_sector fits in 12 bits
-        if sector > Self::SECTOR_MASK {
+        if sector + FIRST_USABLE_SECTOR > Self::SECTOR_MASK {
             return Err(BadSector)
         }
-        let next = sector & Self::SECTOR_MASK;
+        let next = (sector + FIRST_USABLE_SECTOR) & Self::SECTOR_MASK;
         Ok(FATEntry(Self::TYPE_USED | next))
     }
 
@@ -191,16 +192,95 @@ impl FAtApi {
         entry.get_sector()
     }
 
-    pub fn new_entry(&mut self, buffer: &[u8; SECTOR_SIZE]) -> Result<(), FileSystemError> {
+    pub fn new_entry(&mut self) -> Result<usize, FileSystemError> {
         let index = self.table.first_free_entry()?;
-        let mut sector: u16 = FIRST_USABLE_SECTOR;
+        let mut sector: u16 = 0;
         if(index != 1) { // for the first entry
             sector = self.get_sector(index - 1)?;
 
         }
 
         // when adding clusters should change the logic here
-        self.disk_manager.write(buffer.as_ptr(), sector as u64 + 1, 1)?;
-        self.add_entry(FATEntry::new_used(sector + 1)?)
+        self.add_entry(FATEntry::new_used(sector + 1)?)?;
+        Ok(index)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)] // Ensures the struct layout is C-compatible (for binary data)
+pub struct DirEntry {
+    pub filename: [u8; 11], // 8 characters for the filename + 3 for the extension
+    pub first_cluster: u16,  // 2 bytes for the first cluster
+}
+
+impl DirEntry {
+    // Create a new directory entry with a filename and first cluster
+    pub fn new(filename: &str, first_cluster: u16) -> Self {
+        let mut filename_bytes = [0u8; 11];
+
+        // Ensure the filename fits into 8.3 format
+        let name = &filename[0..8.min(filename.len())];  // Max 8 characters for the name part
+        let extension = if filename.len() > 8 {
+            &filename[8..11.min(filename.len())] // Max 3 characters for the extension part
+        } else {
+            ""
+        };
+
+        // Copy the name part (0-7) to the filename
+        filename_bytes[..name.len()].copy_from_slice(name.as_bytes());
+
+        // Copy the extension part (8-10) to the filename
+        filename_bytes[8..8 + extension.len()].copy_from_slice(extension.as_bytes());
+
+        DirEntry {
+            filename: filename_bytes,
+            first_cluster,
+        }
+    }
+    pub fn empty() -> Self {
+        DirEntry {
+            filename: [0u8; 11],
+            first_cluster: 0,
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.filename.iter().all(|&x| x == 0)
+    }
+}
+
+const FIRST_DIRECTORY: u16 = 100;
+#[derive(Debug, Clone, Copy)]
+
+pub(crate) struct Directory {
+    entries: [DirEntry; SECTOR_SIZE/2],
+}
+
+impl Directory {
+    pub fn new() -> Self {
+        Directory {
+            entries: [DirEntry::empty(); SECTOR_SIZE/2],
+        }
+    }
+    pub fn add_entry(&mut self, entry: DirEntry) -> Result<(), FileSystemError> {
+        for i in 0..self.entries.len() {
+            if self.entries[i].is_empty() {
+                self.entries[i] = entry;
+                return Ok(());
+            }
+        }
+        Err(OutOfSpace)
+    }
+
+    pub fn print(&self) {
+        println!("{}", self.entries[0].first_cluster);
+        for i in 0..self.entries.len() {
+            if !self.entries[i].is_empty() {
+                let filename_str: String = self.entries[i].filename.iter()
+                    .take_while(|&&x| x != 0)
+                    .map(|&x| x as char)
+                    .collect();
+                println!("{}: {}", filename_str, self.entries[i].first_cluster);
+            }
+        }
     }
 }

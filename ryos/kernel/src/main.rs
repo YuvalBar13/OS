@@ -5,7 +5,7 @@
 extern crate alloc;
 
 use crate::file_system::disk_driver::SECTOR_SIZE;
-use crate::file_system::fat16::{FATEntry, FAtApi};
+use crate::file_system::fat16::{DirEntry, Directory, FATEntry, FAtApi};
 use bootloader_api::BootInfo;
 use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
@@ -72,29 +72,30 @@ fn test_disk_driver() {
     println!("DEBUG: Buffer: {}", buffer[0]);
 }
 
-
 fn test_file_system() {
     let mut fat_api = FAtApi::new();
     let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
-    match fat_api.new_entry(&test_data)
-    {
-        Ok(_) => {}
+    let mut dir = Directory::new();
+    match fat_api.new_entry() {
+        Ok(index) => {
+            fat_api
+                .change_data(index, &[0x56u8; SECTOR_SIZE])
+                .expect("Error writing to disk");
+            let data = fat_api.get_data(index).expect("Error reading from disk");
+            println!("DEBUG: Buffer: {}", data[123]);
+            match dir.add_entry(DirEntry::new("yuval", index as u16)) {
+                Ok(_) => {
+                    dir.print();
+                }
+                Err(e) => {
+                    eprintln!("Error adding entry to directory: {:?}", e);
+                }
+            }
+        }
         Err(e) => {
             eprintln!("Error adding entry to disk {:?}", e);
         }
     }
-    let data = fat_api.get_data(1).expect("Error reading from disk");
-    println!("DEBUG: Buffer: {}", data[123]);
-    match fat_api.save()
-    {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Error writing to disk {:?}", e);
-        }
-    }
-    fat_api.change_data(1, &[0x56u8; SECTOR_SIZE]).expect("Error writing to disk");
-    let data = fat_api.get_data(1).expect("Error reading from disk");
-    println!("DEBUG: Buffer: {}", data[123]);
 }
 
 fn init(boot_info: &'static mut BootInfo) {
