@@ -1,16 +1,18 @@
+use alloc::string::String;
 use alloc::vec::Vec;
 use crate::terminal::input::buffer::BUFFER;
 use crate::{eprintln, print, print_logo, println};
+use crate::file_system::fat16::FAtApi;
 
-pub fn run() {
+pub fn run(fs: &FAtApi) {
     print!(">>> ");
     let input = BUFFER.lock().get_input();
     println!();
-    handle_command(input.as_str());
+    handle_command(input.as_str(), fs);
 }
 
 
-pub fn handle_command(command: &str) {
+pub fn handle_command(command: &str, fs: &FAtApi) {
     let parts: Vec<&str> = command.splitn(2, ' ').collect();
     match parts[0] {
         "shutdown" => shutdown(),
@@ -27,7 +29,12 @@ pub fn handle_command(command: &str) {
         "logo" => {
             clear_screen();
             print_logo();
-        },        _ => eprintln!("{}: command not found", parts[0]),
+        },
+        "cat" => {
+            if let Some(name) = parts.get(1) {
+                cat(name, fs);
+            }
+        },  _ => eprintln!("{}: command not found", parts[0]),
     }
 }
 
@@ -59,6 +66,19 @@ fn reboot() {
         let port: u16 = 0x64; // i8042 command port
         let value: u8 = 0xFE; // Reset command
         core::arch::asm!("out dx, al", in("dx") port, in("al") value);
+    }
+}
+fn cat(name: &str, fs: &FAtApi) {
+    match fs.index_by_name(name){
+        Ok(index) => {
+            match fs.get_data(index as usize) {
+                Ok(data) => {
+                    println!("{}", String::from_utf8_lossy(&data));
+                }
+                Err(e) => println!("Error: {:?}", e),
+            }
+        }
+        Err(e) => println!("Error: {:?}", e),
     }
 }
 fn help() {

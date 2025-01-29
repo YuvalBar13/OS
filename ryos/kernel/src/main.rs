@@ -30,10 +30,31 @@ mod terminal;
 
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
+    let mut fat = FAtApi::new();
+    match fat.new_entry("test.txt") {
+        Ok(_) => {
+            println!("[!] New entry created");
+            fat.list_dir();
 
-    test_file_system();
+
+        }
+        Err(e) => {
+            eprintln!("Error adding entry to disk {:?}", e);
+        }
+    }
+    let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
+    match fat.index_by_name("test.txt")
+    {
+        Ok(index) => {
+            fat.change_data(index as usize, &test_data).expect("Error writing to disk");
+
+        }
+        Err(e) => {
+            eprintln!("Error adding entry to disk {:?}", e);
+        }
+    }
     loop {
-        terminal::interface::run();
+        terminal::interface::run(&fat);
         x86_64::instructions::hlt();
     }
 }
@@ -75,11 +96,11 @@ fn test_disk_driver() {
 fn test_file_system() {
     let mut fat_api = FAtApi::new();
     let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
-    let mut dir = Directory::new();
     match fat_api.new_entry("test.txt") {
         Ok(_) => {
             println!("[!] New entry created");
             fat_api.list_dir();
+
 
         }
         Err(e) => {

@@ -226,6 +226,10 @@ impl FAtApi {
     pub fn list_dir(&self)  {
         self.directory.print()
     }
+
+    pub fn index_by_name(&self, name: &str) -> Result<u16, FileSystemError> {
+        Ok(self.directory.get_entry(name)?.first_cluster)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -302,9 +306,7 @@ impl Directory {
 
     pub fn print(&self) {
         for i in 0..self.entries.len() {
-            println!("asdf");
             if !self.entries[i].is_empty() {
-                println!("enterd");
                 println!("{}: {}", self.entries[i].to_string(), self.entries[i].first_cluster);
             }
         }
