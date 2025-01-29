@@ -2,9 +2,10 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use crate::terminal::input::buffer::BUFFER;
 use crate::{eprintln, print, print_logo, println};
+use crate::file_system::disk_driver::SECTOR_SIZE;
 use crate::file_system::fat16::FAtApi;
 
-pub fn run(fs: &FAtApi) {
+pub fn run(fs: &mut FAtApi) {
     print!(">>> ");
     let input = BUFFER.lock().get_input();
     println!();
@@ -12,8 +13,8 @@ pub fn run(fs: &FAtApi) {
 }
 
 
-pub fn handle_command(command: &str, fs: &FAtApi) {
-    let parts: Vec<&str> = command.splitn(2, ' ').collect();
+pub fn handle_command(command: &str, fs: &mut FAtApi) {
+    let parts: Vec<&str> = command.splitn(3, ' ').collect();
     match parts[0] {
         "shutdown" => shutdown(),
         "reboot" => reboot(),
@@ -34,7 +35,28 @@ pub fn handle_command(command: &str, fs: &FAtApi) {
             if let Some(name) = parts.get(1) {
                 cat(name, fs);
             }
-        },  _ => eprintln!("{}: command not found", parts[0]),
+            else { eprintln!("Usage: cat [name]") }
+        },
+        "write" => {
+            if let Some(name) = parts.get(1) {
+                if let Some(buffer) = parts.get(2) {
+                    write(name, to_buffer(buffer), fs);
+                }
+                else { eprintln!("Usage: write [name] [buffer]") }
+            }
+            else { eprintln!("Usage: write [name] [buffer]") }
+
+        },
+        "ls" => {
+            ls(fs);
+        },
+        "touch" => {
+            if let Some(name) = parts.get(1) {
+                touch(name, fs);
+            }
+            else { eprintln!("Usage: touch [name]") }
+        },
+        _ => eprintln!("{}: command not found", parts[0]),
     }
 }
 
@@ -73,12 +95,41 @@ fn cat(name: &str, fs: &FAtApi) {
         Ok(index) => {
             match fs.get_data(index as usize) {
                 Ok(data) => {
-                    println!("{}", String::from_utf8_lossy(&data));
+                    for i in 0..SECTOR_SIZE {
+                        if data[i] == 0 {
+                            break;
+                        }
+                        print!("{}", data[i] as char);
+                    }
+                    println!(); // new line
+                    match fs.save()
+                    {
+                        Ok(_) => {}
+                        Err(e) => eprintln!("Error saving disk: {:?}", e)
+                    }
                 }
-                Err(e) => println!("Error: {:?}", e),
+                Err(e) => eprintln!("Error: {:?}", e),
             }
         }
-        Err(e) => println!("Error: {:?}", e),
+        Err(e) => eprintln!("Error: {:?}", e),
+    }
+}
+
+fn write(name: &str, buffer: [u8; SECTOR_SIZE], fs: &mut FAtApi) {
+
+    match fs.index_by_name(name)
+    {
+        Ok(index) => {
+            fs.change_data(index as usize, &buffer).expect("Error writing to disk");
+            match fs.save()
+            {
+                Ok(_) => {}
+                Err(e) => eprintln!("Error saving disk: {:?}", e)
+            }
+        }
+        Err(e) => {
+            eprintln!("Error adding entry to disk {:?}", e);
+        }
     }
 }
 fn help() {
@@ -87,4 +138,35 @@ fn help() {
     println!("logo - print the logo");
     println!("shutdown - shutdown the computer");
     println!("reboot - reboot the computer");
+    println!("cat - print the contents of a file");
+    println!("write - write to a file");
+}
+
+fn to_buffer(str: &str) -> [u8; SECTOR_SIZE] {
+    let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
+    for (index, char) in str.char_indices() {
+        buffer[index] = char as u8;
+    }
+    buffer
+}
+
+fn ls(fs: &FAtApi)
+{
+    fs.list_dir();
+}
+
+fn touch(name: &str, fs: &mut FAtApi)
+{
+    match fs.new_entry(name) {
+        Ok(_) => {
+            match fs.save()
+            {
+                Ok(_) => {}
+                Err(e) => eprintln!("Error saving disk: {:?}", e)
+            }
+        }
+        Err(e) => {
+            eprintln!("Error adding entry to disk {:?}", e);
+        }
+    }
 }

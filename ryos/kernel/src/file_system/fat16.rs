@@ -205,7 +205,9 @@ impl FAtApi {
 
                 }
 
-                // when adding clusters should change the logic here
+                let zero = [0; SECTOR_SIZE];
+                self.disk_manager.write(zero.as_ptr(), sector as u64 + 1 + FIRST_USABLE_SECTOR as u64, 1)?;
+
                 self.add_entry(FATEntry::new_used(sector + 1)?)?;
                 Ok(self.directory.add_entry(DirEntry::new(name, index as u16))?)
             }

@@ -31,30 +31,8 @@ mod terminal;
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
     let mut fat = FAtApi::new();
-    match fat.new_entry("test.txt") {
-        Ok(_) => {
-            println!("[!] New entry created");
-            fat.list_dir();
-
-
-        }
-        Err(e) => {
-            eprintln!("Error adding entry to disk {:?}", e);
-        }
-    }
-    let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
-    match fat.index_by_name("test.txt")
-    {
-        Ok(index) => {
-            fat.change_data(index as usize, &test_data).expect("Error writing to disk");
-
-        }
-        Err(e) => {
-            eprintln!("Error adding entry to disk {:?}", e);
-        }
-    }
     loop {
-        terminal::interface::run(&fat);
+        terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
@@ -198,6 +176,7 @@ fn print_logo() {
     // Reset to default color
     change_writer_color(terminal::output::framebuffer::DEFAULT_COLOR);
     println!("\n\n\n\n");
+    println!("Welcome to ryos os!!!\nfor help write 'help'");
 }
 
 fn change_writer_color(color: Color) {
