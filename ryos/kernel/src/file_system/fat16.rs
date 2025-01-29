@@ -81,7 +81,6 @@ impl FAT {
     }
 
     pub fn is_valid(&self) -> bool {
-        println!("first entry {}", self.entries[0].as_bin());
         self.entries[0].as_bin() == Self::MAGIC_NUMBER
     }
     pub fn load_or_create(disk_manager: &DiskManager) -> FAT {
