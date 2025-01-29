@@ -8,4 +8,5 @@ pub enum FileSystemError {
     UnusedSector,
     DiskNotAvailable,
     BadSector,
+    FileAlreadyExists,
 }

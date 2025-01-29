@@ -1,7 +1,7 @@
 use alloc::string::String;
 use crate::file_system::disk_driver::{DiskManager, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
-use crate::file_system::errors::FileSystemError::{BadSector, IndexOutOfBounds, OutOfSpace, UnusedSector};
+use crate::file_system::errors::FileSystemError::{BadSector, FileAlreadyExists, FileNotFound, IndexOutOfBounds, OutOfSpace, UnusedSector};
 use crate::println;
 const FIRST_USABLE_SECTOR: u16 = 120;
 
@@ -148,6 +148,7 @@ impl FAT {
 pub struct FAtApi {
     table: FAT,
     disk_manager: DiskManager,
+    directory: Directory
 }
 
 impl FAtApi {
@@ -157,6 +158,7 @@ impl FAtApi {
         FAtApi {
             table: FAT::load_or_create(&disk_manager),
             disk_manager,
+            directory: Directory::new()
         }
     }
     pub fn save(&self) -> Result<(), FileSystemError> {
@@ -192,17 +194,37 @@ impl FAtApi {
         entry.get_sector()
     }
 
-    pub fn new_entry(&mut self) -> Result<usize, FileSystemError> {
-        let index = self.table.first_free_entry()?;
-        let mut sector: u16 = 0;
-        if(index != 1) { // for the first entry
-            sector = self.get_sector(index - 1)?;
+    pub fn new_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
+        match self.directory.get_entry(name)
+        {
+            Err(_) => {
+                let index = self.table.first_free_entry()?;
+                let mut sector: u16 = 0;
+                if(index != 1) { // for the first entry
+                    sector = self.get_sector(index - 1)?;
+
+                }
+
+                // when adding clusters should change the logic here
+                self.add_entry(FATEntry::new_used(sector + 1)?)?;
+                Ok(self.directory.add_entry(DirEntry::new(name, index as u16))?)
+            }
+            Ok(_) => {
+                Err(FileAlreadyExists)
+            }
 
         }
 
-        // when adding clusters should change the logic here
-        self.add_entry(FATEntry::new_used(sector + 1)?)?;
-        Ok(index)
+    }
+    pub fn save_dir(&self) -> Result<(), FileSystemError> {
+        self.directory.save(&self.disk_manager)
+    }
+    pub fn load_dir(&self) -> Result<Directory, FileSystemError> {
+        Directory::load(&self.disk_manager)
+    }
+
+    pub fn list_dir(&self)  {
+        self.directory.print()
     }
 }
 
@@ -243,22 +265,29 @@ impl DirEntry {
             first_cluster: 0,
         }
     }
+    pub fn to_string(&self) -> String {
+        self.filename.iter()
+            .take_while(|&&x| x != 0)
+            .map(|&x| x as char)
+            .collect()
+    }
     pub fn is_empty(&self) -> bool {
         self.filename.iter().all(|&x| x == 0)
     }
 }
 
 const FIRST_DIRECTORY: u16 = 100;
+const ENTRY_COUNT: usize = 39; // each sector contains 39 entries so 5 sectors fit 196
 #[derive(Debug, Clone, Copy)]
 
 pub(crate) struct Directory {
-    entries: [DirEntry; SECTOR_SIZE/2],
+    entries: [DirEntry; ENTRY_COUNT],
 }
 
 impl Directory {
     pub fn new() -> Self {
         Directory {
-            entries: [DirEntry::empty(); SECTOR_SIZE/2],
+            entries: [DirEntry::empty(); ENTRY_COUNT],
         }
     }
     pub fn add_entry(&mut self, entry: DirEntry) -> Result<(), FileSystemError> {
@@ -272,15 +301,41 @@ impl Directory {
     }
 
     pub fn print(&self) {
-        println!("{}", self.entries[0].first_cluster);
         for i in 0..self.entries.len() {
+            println!("asdf");
             if !self.entries[i].is_empty() {
-                let filename_str: String = self.entries[i].filename.iter()
-                    .take_while(|&&x| x != 0)
-                    .map(|&x| x as char)
-                    .collect();
-                println!("{}: {}", filename_str, self.entries[i].first_cluster);
+                println!("enterd");
+                println!("{}: {}", self.entries[i].to_string(), self.entries[i].first_cluster);
             }
         }
     }
+
+    pub fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
+        disk_manager.write(self as *const Directory as *const u8, FIRST_DIRECTORY as u64, 1)
+    }
+    pub fn load(disk_manager: &DiskManager) -> Result<Directory, FileSystemError> {
+        let mut buffer = [0u8; ENTRY_COUNT];
+        disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 1)?;
+        Ok(Self::from_bytes(buffer))
+    }
+
+    fn from_bytes(bytes: [u8; ENTRY_COUNT]) -> Directory {
+        let mut directory = Directory::new();
+        directory.entries = unsafe {*(bytes.as_ptr() as *const [DirEntry; ENTRY_COUNT])};
+        directory
+    }
+
+    fn get_entry(&self, name: &str) -> Result<(DirEntry), FileSystemError> {
+        for i in 0..self.entries.len() {
+            if self.entries[i].is_empty() {
+                continue;
+            }
+
+            if self.entries[i].to_string() == name {
+                return Ok(self.entries[i])
+            }
+        }
+        Err(FileNotFound)
+    }
+
 }

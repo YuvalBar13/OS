@@ -76,21 +76,11 @@ fn test_file_system() {
     let mut fat_api = FAtApi::new();
     let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
     let mut dir = Directory::new();
-    match fat_api.new_entry() {
-        Ok(index) => {
-            fat_api
-                .change_data(index, &[0x56u8; SECTOR_SIZE])
-                .expect("Error writing to disk");
-            let data = fat_api.get_data(index).expect("Error reading from disk");
-            println!("DEBUG: Buffer: {}", data[123]);
-            match dir.add_entry(DirEntry::new("yuval", index as u16)) {
-                Ok(_) => {
-                    dir.print();
-                }
-                Err(e) => {
-                    eprintln!("Error adding entry to directory: {:?}", e);
-                }
-            }
+    match fat_api.new_entry("test.txt") {
+        Ok(_) => {
+            println!("[!] New entry created");
+            fat_api.list_dir();
+
         }
         Err(e) => {
             eprintln!("Error adding entry to disk {:?}", e);
