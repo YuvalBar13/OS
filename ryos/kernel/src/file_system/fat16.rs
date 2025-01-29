@@ -2,6 +2,7 @@ use crate::file_system::disk_driver::{DiskManager, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
 use crate::file_system::errors::FileSystemError::{IndexOutOfBounds, OutOfSpace, UnusedSector};
 use crate::println;
+const FIRST_USABLE_SECTOR: u16 = 100;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -80,23 +81,34 @@ impl FAT {
     }
 
     pub fn is_valid(&self) -> bool {
+        println!("first entry {}", self.entries[0].as_bin());
         self.entries[0].as_bin() == Self::MAGIC_NUMBER
     }
     pub fn load_or_create(disk_manager: &DiskManager) -> FAT {
         match FAT::load(disk_manager) {
-            Ok(fat) if fat.is_valid() => fat, // Return the valid FAT
-            Ok(_) => FAT::new(), // If FAT is invalid, create a new one
-            Err(_) => panic!("Error, Disk dont work")
+            Ok(fat) if fat.is_valid() => {
+                println!("FAT loaded successfully and is valid.");
+                fat // Return the valid FAT
+            }
+            Ok(_) => {
+                println!("FAT loaded but is invalid, creating a new one.");
+                FAT::new() // If FAT is invalid, create a new one
+            }
+            Err(_) => {
+                println!("Error: Disk failed to load FAT.");
+                panic!("Error, Disk doesn't work");
+            }
         }
     }
+
     pub fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
         // Save the FAT table to disk
-        disk_manager.write(self as *const FAT as *const u8, 1, 1)
+        disk_manager.write(self as *const FAT as *const u8, FIRST_USABLE_SECTOR as u64 - 1, 1)
     }
     pub fn load(disk_manager: &DiskManager) -> Result<FAT, FileSystemError> {
         // Load the FAT table from disk
         let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
-        match disk_manager.read(buffer.as_mut_ptr(), 1, 1) {
+        match disk_manager.read(buffer.as_mut_ptr(), FIRST_USABLE_SECTOR  as u64 - 1, 1) {
             Ok(()) => Ok(Self::from_buffer(buffer)),
             Err(e) => Err(e),
         }
@@ -174,14 +186,14 @@ impl FAtApi {
 
     pub fn new_entry(&mut self, buffer: &[u8; SECTOR_SIZE]) -> Result<(), FileSystemError> {
         let index = self.table.first_free_entry()?;
-        let mut sector: u16 = 1;
+        let mut sector: u16 = FIRST_USABLE_SECTOR;
         if(index != 1) { // for the first entry
             let sector = self.get_sector(index - 1)?;
 
         }
 
         // when adding clusters should change the logic here
-        self.write(buffer.as_ptr(), sector as u64 + 1, 1)?;
+        self.disk_manager.write(buffer.as_ptr(), sector as u64 + 1, 1)?;
         self.add_entry(FATEntry::new_used(sector + 1))
     }
 }

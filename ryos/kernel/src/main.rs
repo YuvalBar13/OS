@@ -85,7 +85,15 @@ fn test_file_system() {
     }
     let data = fat_api.get_data(1).expect("Error reading from disk");
     println!("DEBUG: Buffer: {}", data[123]);
+    match fat_api.save()
+    {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Error writing to disk {:?}", e);
+        }
+    }
 }
+
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
 
