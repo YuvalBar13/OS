@@ -98,7 +98,8 @@ fn cat(name: &str, fs: &FAtApi) {
                 Ok(data) => {
                     for i in 0..SECTOR_SIZE {
                         if data[i] == 0 {
-                            break;
+                            println!(); // new line
+                            return;
                         }
                         print!("{}", data[i] as char);
                     }
