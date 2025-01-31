@@ -21,15 +21,15 @@ impl FATEntry {
     const TYPE_EOF: u16 = 0b0001_0000_0000_0000;
     const TYPE_BAD: u16 = 0b0010_0000_0000_0000;
     const TYPE_USED: u16 = 0b0011_0000_0000_0000;
-     fn new_free() -> Self {
+    fn new_free() -> Self {
         FATEntry(Self::TYPE_FREE)
     }
 
-     fn new_eof() -> Self {
+    fn new_eof() -> Self {
         FATEntry(Self::TYPE_EOF)
     }
 
-     fn new_used(sector: u16) -> Result<Self, FileSystemError> {
+    fn new_used(sector: u16) -> Result<Self, FileSystemError> {
         // Ensure next_sector fits in 12 bits
         if sector + FIRST_USABLE_SECTOR > Self::SECTOR_MASK {
             return Err(BadSector);
@@ -38,11 +38,11 @@ impl FATEntry {
         Ok(FATEntry(Self::TYPE_USED | next))
     }
 
-     fn get_type(&self) -> u16 {
+    fn get_type(&self) -> u16 {
         self.0 & Self::TYPE_MASK
     }
 
-     fn get_sector(&self) -> Result<u16, FileSystemError> {
+    fn get_sector(&self) -> Result<u16, FileSystemError> {
         if self.is_used() {
             Ok(self.0 & Self::SECTOR_MASK)
         } else {
@@ -50,22 +50,22 @@ impl FATEntry {
         }
     }
 
-     fn is_free(&self) -> bool {
+    fn is_free(&self) -> bool {
         self.get_type() == Self::TYPE_FREE
     }
 
-     fn is_eof(&self) -> bool {
+    fn is_eof(&self) -> bool {
         self.get_type() == Self::TYPE_EOF
     }
 
-     fn is_used(&self) -> bool {
+    fn is_used(&self) -> bool {
         self.get_type() == Self::TYPE_USED
     }
 
-     fn is_bad(&self) -> bool {
+    fn is_bad(&self) -> bool {
         self.get_type() == Self::TYPE_BAD
     }
-     fn as_bin(&self) -> u16 {
+    fn as_bin(&self) -> u16 {
         self.0
     }
 }
@@ -78,7 +78,7 @@ pub struct FAT {
 
 impl FAT {
     const MAGIC_NUMBER: u16 = 0xF1A7; // Magic number for FAT table(if the first entry is this the fat is initialized)
-     fn new() -> Self {
+    fn new() -> Self {
         let mut table = FAT {
             entries: [FATEntry::new_free(); SECTOR_SIZE / 2], // each entry is 2 bytes and the whole table is 512 bytes
         };
@@ -86,10 +86,10 @@ impl FAT {
         table
     }
 
-     fn is_valid(&self) -> bool {
+    fn is_valid(&self) -> bool {
         self.entries[0].as_bin() == Self::MAGIC_NUMBER
     }
-     fn load_or_create(disk_manager: &DiskManager) -> FAT {
+    fn load_or_create(disk_manager: &DiskManager) -> FAT {
         match FAT::load(disk_manager) {
             Ok(fat) if fat.is_valid() => {
                 println!("FAT loaded successfully and is valid.");
@@ -106,7 +106,7 @@ impl FAT {
         }
     }
 
-     fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
+    fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
         // Save the FAT table to disk
         disk_manager.write(
             self as *const FAT as *const u8,
@@ -114,7 +114,7 @@ impl FAT {
             1,
         )
     }
-     fn load(disk_manager: &DiskManager) -> Result<FAT, FileSystemError> {
+    fn load(disk_manager: &DiskManager) -> Result<FAT, FileSystemError> {
         // Load the FAT table from disk
         let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
         match disk_manager.read(buffer.as_mut_ptr(), FIRST_USABLE_SECTOR as u64 - 1, 1) {
@@ -128,7 +128,7 @@ impl FAT {
         fat.entries = unsafe { *(buffer.as_ptr() as *const [FATEntry; 256]) };
         fat
     }
-     fn first_free_entry(&self) -> Result<usize, FileSystemError> {
+    fn first_free_entry(&self) -> Result<usize, FileSystemError> {
         for i in 1..self.entries.len() {
             if self.entries[i].is_free() {
                 return Ok(i);
@@ -136,7 +136,7 @@ impl FAT {
         }
         Err(OutOfSpace)
     }
-     fn add_entry(&mut self, entry: FATEntry) -> Result<(), FileSystemError> {
+    fn add_entry(&mut self, entry: FATEntry) -> Result<(), FileSystemError> {
         match self.first_free_entry() {
             Ok(index) => {
                 self.entries[index] = entry;
@@ -145,7 +145,10 @@ impl FAT {
             Err(e) => Err(e),
         }
     }
-
+    fn remove_entry(&mut self, index: u16) -> Result<(), FileSystemError> {
+        self.entries[index as usize] = FATEntry::new_free();
+        Ok(())
+    }
 }
 
 pub struct FAtApi {
@@ -228,13 +231,17 @@ impl FAtApi {
         }
     }
 
-
     pub fn list_dir(&self) {
         self.directory.print()
     }
 
     pub fn index_by_name(&self, name: &str) -> Result<u16, FileSystemError> {
         Ok(self.directory.get_entry(name)?.first_cluster)
+    }
+
+    pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
+        self.table.remove_entry(self.index_by_name(name)?)?;
+        Ok(self.directory.remove_entry(name)) // cant failed cause teh index by name found that there is entry with the name
     }
 }
 
@@ -247,7 +254,7 @@ pub struct DirEntry {
 
 impl DirEntry {
     // Create a new directory entry with a filename and first cluster
-     fn new(filename: &str, first_cluster: u16) -> Self {
+    fn new(filename: &str, first_cluster: u16) -> Self {
         let mut filename_bytes = [0u8; 11];
 
         // Ensure the filename fits into 8.3 format
@@ -269,20 +276,20 @@ impl DirEntry {
             first_cluster,
         }
     }
-     fn empty() -> Self {
+    fn empty() -> Self {
         DirEntry {
             filename: [0u8; 11],
             first_cluster: 0,
         }
     }
-     fn to_string(&self) -> String {
+    fn to_string(&self) -> String {
         self.filename
             .iter()
             .take_while(|&&x| x != 0)
             .map(|&x| x as char)
             .collect()
     }
-     fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.filename.iter().all(|&x| x == 0)
     }
 }
@@ -306,17 +313,18 @@ impl Directory {
     }
     pub fn load_or_create_dir(disk_manager: &DiskManager) -> Directory {
         match Directory::load(&disk_manager) {
-            Ok(dir) =>
-                {
-                    println!("Directory loaded successfully and is valid.");
-                    dir
-                },
+            Ok(dir) => {
+                println!("Directory loaded successfully and is valid.");
+                dir
+            }
             Err(FileSystemError::InvalidDirectory) => {
                 println!("Directory loaded but is invalid, creating a new one");
                 let new_dir = Directory::new();
-                new_dir.save(disk_manager).expect("Failed to save new directory");
                 new_dir
-            },
+                    .save(disk_manager)
+                    .expect("Failed to save new directory");
+                new_dir
+            }
             Err(_) => panic!("Failed to read directory"),
         }
     }
@@ -359,9 +367,7 @@ impl Directory {
 
         disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 1)?;
 
-        let directory = unsafe {
-            core::ptr::read(buffer.as_ptr() as *const Directory)
-        };
+        let directory = unsafe { core::ptr::read(buffer.as_ptr() as *const Directory) };
 
         // Validate magic number
         if directory.magic != DIRECTORY_MAGIC {
@@ -370,8 +376,6 @@ impl Directory {
 
         Ok(directory)
     }
-
-
 
     fn get_entry(&self, name: &str) -> Result<(DirEntry), FileSystemError> {
         for i in 0..self.entries.len() {
@@ -386,4 +390,11 @@ impl Directory {
         Err(FileNotFound)
     }
 
+    fn remove_entry(&mut self, name: &str) {
+        for i in 0..self.entries.len() {
+            if self.entries[i].to_string() == name {
+                self.entries[i] = DirEntry::empty();
+            }
+        }
+    }
 }

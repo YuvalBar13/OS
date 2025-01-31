@@ -57,6 +57,12 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
             }
             else { eprintln!("Usage: touch [name]") }
         },
+        "rm" => {
+            if let Some(name) = parts.get(1) {
+                rm(name, fs);
+            }
+            else { eprintln!("Usage: rm [name]") }
+        },
         _ => eprintln!("{}: command not found", parts[0]),
     }
 }
@@ -98,7 +104,10 @@ fn cat(name: &str, fs: &FAtApi) {
                 Ok(data) => {
                     for i in 0..SECTOR_SIZE {
                         if data[i] == 0 {
-                            println!(); // new line
+                            if i != 0 // in case that the file isnt empty but isnt full print a new line at teh end
+                            {
+                                println!();
+                            }
                             return;
                         }
                         print!("{}", data[i] as char);
@@ -171,6 +180,22 @@ fn touch(name: &str, fs: &mut FAtApi)
         }
         Err(e) => {
             eprintln!("Error adding entry to disk {:?}", e);
+        }
+    }
+}
+
+fn rm(name: &str, fs: &mut FAtApi)
+{
+    match fs.remove_entry(name) {
+        Ok(_) => {
+            match fs.save()
+            {
+                Ok(_) => {}
+                Err(e) => eprintln!("Error: {:?}", e)
+            }
+        }
+        Err(e) => {
+            eprintln!("Error {:?}", e);
         }
     }
 }
