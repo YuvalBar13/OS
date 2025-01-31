@@ -1,8 +1,10 @@
-use alloc::string::String;
 use crate::file_system::disk_driver::{DiskManager, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
-use crate::file_system::errors::FileSystemError::{BadSector, FileAlreadyExists, FileNotFound, IndexOutOfBounds, OutOfSpace, UnusedSector};
+use crate::file_system::errors::FileSystemError::{
+    BadSector, FileAlreadyExists, FileNotFound, IndexOutOfBounds, OutOfSpace, UnusedSector,
+};
 use crate::println;
+use alloc::string::String;
 const FIRST_USABLE_SECTOR: u16 = 120;
 
 #[derive(Debug, Clone, Copy)]
@@ -30,7 +32,7 @@ impl FATEntry {
     pub fn new_used(sector: u16) -> Result<Self, FileSystemError> {
         // Ensure next_sector fits in 12 bits
         if sector + FIRST_USABLE_SECTOR > Self::SECTOR_MASK {
-            return Err(BadSector)
+            return Err(BadSector);
         }
         let next = (sector + FIRST_USABLE_SECTOR) & Self::SECTOR_MASK;
         Ok(FATEntry(Self::TYPE_USED | next))
@@ -106,12 +108,16 @@ impl FAT {
 
     pub fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
         // Save the FAT table to disk
-        disk_manager.write(self as *const FAT as *const u8, FIRST_USABLE_SECTOR as u64 - 1, 1)
+        disk_manager.write(
+            self as *const FAT as *const u8,
+            FIRST_USABLE_SECTOR as u64 - 1,
+            1,
+        )
     }
     pub fn load(disk_manager: &DiskManager) -> Result<FAT, FileSystemError> {
         // Load the FAT table from disk
         let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
-        match disk_manager.read(buffer.as_mut_ptr(), FIRST_USABLE_SECTOR  as u64 - 1, 1) {
+        match disk_manager.read(buffer.as_mut_ptr(), FIRST_USABLE_SECTOR as u64 - 1, 1) {
             Ok(()) => Ok(Self::from_buffer(buffer)),
             Err(e) => Err(e),
         }
@@ -148,7 +154,7 @@ impl FAT {
 pub struct FAtApi {
     table: FAT,
     disk_manager: DiskManager,
-    directory: Directory
+    directory: Directory,
 }
 
 impl FAtApi {
@@ -157,12 +163,13 @@ impl FAtApi {
         disk_manager.check().expect("Error init disk at FATApi");
         FAtApi {
             table: FAT::load_or_create(&disk_manager),
+            directory: Directory::load_or_create_dir(&disk_manager),
             disk_manager,
-            directory: Directory::new()
         }
     }
     pub fn save(&self) -> Result<(), FileSystemError> {
-        self.table.save(&self.disk_manager)
+        self.table.save(&self.disk_manager)?;
+        self.directory.save(&self.disk_manager)
     }
 
     pub fn add_entry(&mut self, entry: FATEntry) -> Result<(), FileSystemError> {
@@ -173,19 +180,23 @@ impl FAtApi {
         if entry_index >= self.table.entries.len() || entry_index < 1 {
             return Err(IndexOutOfBounds);
         }
-        Ok(self.table.entries[entry_index ])
+        Ok(self.table.entries[entry_index])
     }
 
     pub fn get_data(&self, entry_index: usize) -> Result<[u8; SECTOR_SIZE], FileSystemError> {
         let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
 
         let sector = self.get_sector(entry_index)?;
-        self.disk_manager.read(buffer.as_mut_ptr(), sector as u64, 1)?;
+        self.disk_manager
+            .read(buffer.as_mut_ptr(), sector as u64, 1)?;
         Ok(buffer)
-
     }
 
-    pub fn change_data(&mut self, entry_index: usize, buffer: &[u8; SECTOR_SIZE]) -> Result<(), FileSystemError> {
+    pub fn change_data(
+        &mut self,
+        entry_index: usize,
+        buffer: &[u8; SECTOR_SIZE],
+    ) -> Result<(), FileSystemError> {
         let sector = self.get_sector(entry_index)?;
         self.disk_manager.write(buffer.as_ptr(), sector as u64, 1)
     }
@@ -194,38 +205,49 @@ impl FAtApi {
         entry.get_sector()
     }
 
-    pub fn new_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
-        match self.directory.get_entry(name)
-        {
-            Err(_) => {
-                let index = self.table.first_free_entry()?;
-                let mut sector: u16 = 0;
-                if(index != 1) { // for the first entry
-                    sector = self.get_sector(index - 1)?;
-
-                }
-
-                let zero = [0; SECTOR_SIZE];
-                self.disk_manager.write(zero.as_ptr(), sector as u64 + 1 + FIRST_USABLE_SECTOR as u64, 1)?;
-
-                self.add_entry(FATEntry::new_used(sector + 1)?)?;
-                Ok(self.directory.add_entry(DirEntry::new(name, index as u16))?)
-            }
-            Ok(_) => {
-                Err(FileAlreadyExists)
-            }
-
-        }
-
+    // TODO: remove dir tests
+    pub fn add_dir_entry(&mut self, entry: DirEntry) -> Result<(), FileSystemError> {
+        self.directory.add_entry(entry)
     }
+
+    pub fn get_dir_entry(&self, name: &str) -> Result<DirEntry, FileSystemError> {
+        self.directory.get_entry(name)
+    }
+
     pub fn save_dir(&self) -> Result<(), FileSystemError> {
         self.directory.save(&self.disk_manager)
     }
     pub fn load_dir(&self) -> Result<Directory, FileSystemError> {
         Directory::load(&self.disk_manager)
     }
+    pub fn new_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
+        match self.directory.get_entry(name) {
+            Err(_) => {
+                let index = self.table.first_free_entry()?;
+                let mut sector: u16 = 0;
+                if (index != 1) {
+                    // for the first entry
+                    sector = self.get_sector(index - 1)?;
+                }
 
-    pub fn list_dir(&self)  {
+                let zero = [0; SECTOR_SIZE];
+                self.disk_manager.write(
+                    zero.as_ptr(),
+                    sector as u64 + 1 + FIRST_USABLE_SECTOR as u64,
+                    1,
+                )?;
+
+                self.add_entry(FATEntry::new_used(sector + 1)?)?;
+                Ok(self
+                    .directory
+                    .add_entry(DirEntry::new(name, index as u16))?)
+            }
+            Ok(_) => Err(FileAlreadyExists),
+        }
+    }
+
+
+    pub fn list_dir(&self) {
         self.directory.print()
     }
 
@@ -238,7 +260,7 @@ impl FAtApi {
 #[repr(C)] // Ensures the struct layout is C-compatible (for binary data)
 pub struct DirEntry {
     pub filename: [u8; 11], // 8 characters for the filename + 3 for the extension
-    pub first_cluster: u16,  // 2 bytes for the first cluster
+    pub first_cluster: u16, // 2 bytes for the first cluster
 }
 
 impl DirEntry {
@@ -247,7 +269,7 @@ impl DirEntry {
         let mut filename_bytes = [0u8; 11];
 
         // Ensure the filename fits into 8.3 format
-        let name = &filename[0..8.min(filename.len())];  // Max 8 characters for the name part
+        let name = &filename[0..8.min(filename.len())]; // Max 8 characters for the name part
         let extension = if filename.len() > 8 {
             &filename[8..11.min(filename.len())] // Max 3 characters for the extension part
         } else {
@@ -272,7 +294,8 @@ impl DirEntry {
         }
     }
     pub fn to_string(&self) -> String {
-        self.filename.iter()
+        self.filename
+            .iter()
             .take_while(|&&x| x != 0)
             .map(|&x| x as char)
             .collect()
@@ -284,16 +307,35 @@ impl DirEntry {
 
 const FIRST_DIRECTORY: u16 = 100;
 const ENTRY_COUNT: usize = 39; // each sector contains 39 entries so 5 sectors fit 196
+const DIRECTORY_MAGIC: u32 = 0xdead;
 #[derive(Debug, Clone, Copy)]
 
 pub(crate) struct Directory {
+    magic: u32,
     entries: [DirEntry; ENTRY_COUNT],
 }
 
 impl Directory {
     pub fn new() -> Self {
         Directory {
+            magic: DIRECTORY_MAGIC,
             entries: [DirEntry::empty(); ENTRY_COUNT],
+        }
+    }
+    pub fn load_or_create_dir(disk_manager: &DiskManager) -> Directory {
+        match Directory::load(&disk_manager) {
+            Ok(dir) =>
+                {
+                    println!("Directory loaded successfully and is valid.");
+                    dir
+                },
+            Err(FileSystemError::InvalidDirectory) => {
+                println!("Directory loaded but is invalid, creating a new one");
+                let new_dir = Directory::new();
+                new_dir.save(disk_manager).expect("Failed to save new directory");
+                new_dir
+            },
+            Err(_) => panic!("Failed to read directory"),
         }
     }
     pub fn add_entry(&mut self, entry: DirEntry) -> Result<(), FileSystemError> {
@@ -309,23 +351,47 @@ impl Directory {
     pub fn print(&self) {
         for i in 0..self.entries.len() {
             if !self.entries[i].is_empty() {
-                println!("{}: {}", self.entries[i].to_string(), self.entries[i].first_cluster);
+                println!(
+                    "{}: {}",
+                    self.entries[i].to_string(),
+                    self.entries[i].first_cluster
+                );
             }
         }
     }
 
     pub fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
-        disk_manager.write(self as *const Directory as *const u8, FIRST_DIRECTORY as u64, 1)
+        // Transmute the entire directory structure into a byte slice
+        let bytes = unsafe {
+            core::slice::from_raw_parts(
+                self as *const Directory as *const u8,
+                core::mem::size_of::<Directory>(),
+            )
+        };
+
+        disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 1)
     }
+
     pub fn load(disk_manager: &DiskManager) -> Result<Directory, FileSystemError> {
-        let mut buffer = [0u8; ENTRY_COUNT];
+        let mut buffer = [0u8; core::mem::size_of::<Directory>()];
+
         disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 1)?;
-        Ok(Self::from_bytes(buffer))
+
+        let directory = unsafe {
+            core::ptr::read(buffer.as_ptr() as *const Directory)
+        };
+
+        // Validate magic number
+        if directory.magic != DIRECTORY_MAGIC {
+            return Err(FileSystemError::InvalidDirectory);
+        }
+
+        Ok(directory)
     }
 
     fn from_bytes(bytes: [u8; ENTRY_COUNT]) -> Directory {
         let mut directory = Directory::new();
-        directory.entries = unsafe {*(bytes.as_ptr() as *const [DirEntry; ENTRY_COUNT])};
+        directory.entries = unsafe { *(bytes.as_ptr() as *const [DirEntry; ENTRY_COUNT]) };
         directory
     }
 
@@ -336,10 +402,9 @@ impl Directory {
             }
 
             if self.entries[i].to_string() == name {
-                return Ok(self.entries[i])
+                return Ok(self.entries[i]);
             }
         }
         Err(FileNotFound)
     }
-
 }

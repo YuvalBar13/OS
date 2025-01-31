@@ -31,6 +31,7 @@ mod terminal;
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
     let mut fat = FAtApi::new();
+
     loop {
         terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();

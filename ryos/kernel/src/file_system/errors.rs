@@ -9,4 +9,5 @@ pub enum FileSystemError {
     DiskNotAvailable,
     BadSector,
     FileAlreadyExists,
+    InvalidDirectory,
 }
