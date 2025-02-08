@@ -38,7 +38,7 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     let mut fat = FAtApi::new();
     multitasking::round_robin::add_task(multitasking::round_robin::Task::new(test));
     loop {
-        // terminal::interface::run(&mut fat);
+        terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }

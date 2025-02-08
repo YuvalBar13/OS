@@ -5,6 +5,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::interrupts;
+use crate::println;
 
 #[derive(Debug, Clone)]
 pub struct CpuState {
@@ -77,7 +78,9 @@ impl CpuState {
             asm!("mov rsi, {}", in(reg) self.rsi);
             asm!("mov rdi, {}", in(reg) self.rdi);
             asm!("mov rbp, {}", in(reg) self.rbp);
-            asm!("mov rsp, {}", in(reg) self.rsp);
+
+            //asm!("mov rsp, {}", in(reg) self.rsp); double fault here!
+
             asm!("mov r8, {}", in(reg) self.r8);
             asm!("mov r9, {}", in(reg) self.r9);
             asm!("mov r10, {}", in(reg) self.r10);
@@ -88,10 +91,14 @@ impl CpuState {
             asm!("mov r15, {}", in(reg) self.r15);
             asm!("push {}", in(reg) self.rflags);
             asm!("popfq");
-            asm!("mov cs, {}", in(reg) self.cs);
+
+            //asm!("mov cs, {}", in(reg) self.cs); double fault here!
+
             asm!("mov ss, {}", in(reg) self.ss);
-            asm!("mov ds, {}", in(reg) self.ds);
-            asm!("mov es, {}", in(reg) self.es);
+
+            //asm!("mov ds, {}", in(reg) self.ds); double fault here!
+            //asm!("mov es, {}", in(reg) self.es); double fault here!
+
             asm!("mov fs, {}", in(reg) self.fs);
             asm!("mov gs, {}", in(reg) self.gs);
         }
@@ -153,7 +160,6 @@ impl Task {
 
         // Set initial stack pointer to point to this location
         task.cpu_state.rsp = (task.stack[stack_top - 1]);
-
         task
     }
     pub fn switch_stack(&mut self) {
@@ -232,6 +238,7 @@ impl TaskManager {
 
         // Ensure stack pointer is 16-byte aligned and points to the top of the stack
         next.cpu_state.rsp = (next.cpu_state.rsp & !0xF) - 8;
+
 
         // Load next task's state
         next.cpu_state.load();
