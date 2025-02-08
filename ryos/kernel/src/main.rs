@@ -4,16 +4,13 @@
 
 extern crate alloc;
 
-use crate::file_system::disk_driver::SECTOR_SIZE;
-use crate::file_system::fat16::{DirEntry, Directory, FATEntry, FAtApi};
+use crate::file_system::fat16::{ FAtApi};
 use bootloader_api::BootInfo;
 use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
-use embedded_graphics::image::Image;
-use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::{PixelIteratorExt, Point};
+
+use embedded_graphics::prelude::{PixelIteratorExt};
 use terminal::output::framebuffer::Color;
-use tinytga::Tga;
 use x86_64::VirtAddr;
 
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
@@ -27,13 +24,21 @@ mod heap_alloc;
 mod interrupts;
 mod memory;
 mod terminal;
+mod multitasking;
 
+extern "C" fn test()
+{
+    for _ in 0..50
+    {
+        print!("a");
+    }
+}
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
     let mut fat = FAtApi::new();
-
+    multitasking::round_robin::add_task(multitasking::round_robin::Task::new(test));
     loop {
-        terminal::interface::run(&mut fat);
+        // terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
@@ -44,49 +49,7 @@ fn panic(_info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-fn test_disk_driver() {
-    let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
-    let mut buffer = [0u8; SECTOR_SIZE];
 
-    let mut disk_manager = file_system::disk_driver::DiskManager::new();
-    match disk_manager.check() {
-        Ok(..) => println!("[!] Disk working!"),
-        Err(e) => println!("[!] Disk not working: {:?}", e),
-    };
-
-    match disk_manager.write(test_data.as_ptr(), 1, 1) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Error writing to disk {:?}", e);
-            return;
-        }
-    }
-    match disk_manager.read(buffer.as_mut_ptr(), 1, 1) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Error reading from disk {:?}", e);
-            return;
-        }
-    }
-
-    println!("DEBUG: Buffer: {}", buffer[0]);
-}
-
-fn test_file_system() {
-    let mut fat_api = FAtApi::new();
-    let test_data = [0x55u8; SECTOR_SIZE]; // Test pattern
-    match fat_api.new_entry("test.txt") {
-        Ok(_) => {
-            println!("[!] New entry created");
-            fat_api.list_dir();
-
-
-        }
-        Err(e) => {
-            eprintln!("Error adding entry to disk {:?}", e);
-        }
-    }
-}
 
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
@@ -97,7 +60,7 @@ fn init(boot_info: &'static mut BootInfo) {
     terminal::output::framebuffer::init_writer(my_frame_buffer.shallow_copy().get_buffer());
 
     let mut frame_buffer = my_frame_buffer.get_buffer();
-    let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
+   //  let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
     print_logo();
     init_memory(boot_info);
     init_interrupts();
@@ -126,19 +89,19 @@ pub fn hlt_loop() -> ! {
     }
 }
 
-fn print_image(display: &mut terminal::output::framebuffer::Display) {
-    let data = include_bytes!("logo_type11_bl.tga");
-    let tga: Tga<Rgb888> = Tga::from_slice(data).unwrap();
-    let mut current_y = 0;
-    let image = Image::new(&tga, Point::new(0, current_y as i32));
-    image.draw(display).unwrap();
-}
-
-fn spin_loop(iterations: u32) {
-    for _ in 0..iterations {
-        core::hint::spin_loop();
-    }
-}
+// fn print_image(display: &mut terminal::output::framebuffer::Display) {
+//     let data = include_bytes!("logo_type11_bl.tga");
+//     let tga: Tga<Rgb888> = Tga::from_slice(data).unwrap();
+//     let mut current_y = 0;
+//     let image = Image::new(&tga, Point::new(0, current_y as i32));
+//     image.draw(display).unwrap();
+// }
+//
+// fn spin_loop(iterations: u32) {
+//     for _ in 0..iterations {
+//         core::hint::spin_loop();
+//     }
+// }
 
 fn print_logo() {
     let color1 = Color::new(255, 0, 0); // Red

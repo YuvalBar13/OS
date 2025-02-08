@@ -2,7 +2,7 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 use lazy_static::lazy_static;
 use crate::{println, eprintln,terminal::input::buffer::BUFFER};
 use crate::interrupts::gdt;
-
+use crate::multitasking::round_robin::{schedule, TaskManager, TASK_MANAGER};
 use pic8259::ChainedPics;
 use spin;
 
@@ -58,12 +58,12 @@ extern "x86-interrupt" fn breakpoint_handler(
 extern "x86-interrupt" fn timer_interrupt_handler(
     _stack_frame: InterruptStackFrame)
 {
-    //my_info!(".");
 
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
+    schedule();
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(
