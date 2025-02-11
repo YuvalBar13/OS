@@ -1,6 +1,6 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 use lazy_static::lazy_static;
-use crate::{println, eprintln,terminal::input::buffer::BUFFER};
+use crate::{println, eprintln, terminal::input::buffer::BUFFER, print};
 use crate::interrupts::gdt;
 use crate::multitasking::round_robin::{schedule, TaskManager, TASK_MANAGER};
 use pic8259::ChainedPics;
@@ -32,7 +32,7 @@ lazy_static! {
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         idt[InterruptIndex::Timer.as_u8()]
             .set_handler_fn(timer_interrupt_handler);
-
+        idt.page_fault.set_handler_fn(page_fault_handler);
         idt[InterruptIndex::Keyboard.as_u8()]
             .set_handler_fn(keyboard_interrupt_handler);
 
@@ -63,6 +63,9 @@ extern "x86-interrupt" fn timer_interrupt_handler(
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
+
+    print!(".");
+    x86_64::instructions::interrupts::enable();
     schedule();
 }
 
@@ -103,5 +106,12 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
 extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame, _error_code: u64) -> !
 {
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+    panic!("EXCEPTION: DOUBLE FAULT");
+}
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame, error_code: x86_64::structures::idt::PageFaultErrorCode
+)
+{
+
+    panic!("EXCEPTION: PAGE FAULT {:?}", stack_frame);
 }

@@ -1,9 +1,10 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
-
+#![feature(naked_functions)]
 extern crate alloc;
 
+use core::arch::asm;
 use crate::file_system::fat16::{ FAtApi};
 use bootloader_api::BootInfo;
 use core::panic::PanicInfo;
@@ -26,23 +27,43 @@ mod memory;
 mod terminal;
 mod multitasking;
 
-extern "C" fn test()
+extern "C" fn testa()
 {
     for _ in 0..50
     {
         print!("a");
     }
+    println!("finished a");
+}
+
+
+extern "C" fn testb()
+{
+    for _ in 0..50
+    {
+        print!("b");
+    }
+    println!("finished b");
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-    let mut fat = FAtApi::new();
-    multitasking::round_robin::add_task(multitasking::round_robin::Task::new(test));
+    multitasking::round_robin::add_task(testb);
+    multitasking::round_robin::add_task(testa);
+    //let mut fat = FAtApi::new();
+    println!("main");
     loop {
-        // terminal::interface::run(&mut fat);
+      //  terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
-
+extern "C" fn main_kernel_mode()
+{
+    let mut fat = FAtApi::new();
+    loop {
+        terminal::interface::run(&mut fat);
+        x86_64::instructions::hlt();
+    }
+}
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     eprintln!("{}", _info);
@@ -63,6 +84,8 @@ fn init(boot_info: &'static mut BootInfo) {
    //  let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
     print_logo();
     init_memory(boot_info);
+
+
     init_interrupts();
 }
 
