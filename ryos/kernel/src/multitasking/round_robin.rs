@@ -50,7 +50,7 @@ impl TaskManager {
             current_task: 0,
             switching: AtomicBool::new(false),
             delete: None,
-            next_id: 1
+            next_id: 0
         }
     }
 
@@ -61,44 +61,54 @@ impl TaskManager {
         self.tasks.push(Task::new(function, self.next_id as usize));
         self.next_id += 1;
 
+        //println!("{}", self.tasks.len());
     }
 
     pub fn schedule(&mut self) {
         if self.tasks.len() <= 1 {
             println!("test0");
-            unsafe {switch_context(self.main.rsp, core::ptr::null_mut());}
+            let mut boxed = Box::new(1u64);
+            unsafe {switch_context(self.main.rsp, boxed.as_mut());}
             return;  // Need at least two tasks to switch
         }
-        println!("test1");
         // Use a more robust synchronization mechanism
         if self.switching.load(Ordering::Acquire) {
             return;
         }
-        println!("test2");
         self.switching.store(true, Ordering::Release);
-        println!("test3");
 
         let old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
         self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
         let new_rsp = self.tasks[self.current_task as usize].rsp;
 
-        unsafe { switch_context(new_rsp, old_task_rsp); }
-
-
-        println!("test4");
-
         if let Some(delete_index) = self.delete.take() {
             if delete_index < self.tasks.len() as u32 {
                 self.tasks.remove(delete_index as usize);
+                println!("removed task");
 
-                // Adjust current task index if necessary
+                //Adjust current task index if necessary
                 if self.current_task >= self.tasks.len() as u32 {
-                    self.current_task = 0;
+                    self.current_task -= 1;
+                    if self.tasks.len() < 1
+                    {
+                        self.current_task = 0;
+                    }
                 }
+
+                x86_64::instructions::interrupts::without_interrupts( || {
+                    unsafe{TASK_MANAGER.force_unlock()};
+                    self.switching.store(false, Ordering::Release);
+                    schedule();
+                });
+                
             }
         }
-        println!("test5");
-        self.switching.store(false, Ordering::Release);
+
+        x86_64::instructions::interrupts::without_interrupts( || {
+            unsafe{TASK_MANAGER.force_unlock()};
+            self.switching.store(false, Ordering::Release);
+            unsafe { switch_context(new_rsp, old_task_rsp); }
+        });
     }
 
 }
@@ -160,6 +170,7 @@ fn remove_task()
 {
     println!("removing task {}", TASK_MANAGER.lock().current_task);
     TASK_MANAGER.lock().delete_current();
+    schedule();
 }
 pub fn add_task(func: extern "C" fn()) {
     TASK_MANAGER.lock().add_task(func);
@@ -170,6 +181,9 @@ extern "C" fn print_no()
     for _ in 0..50
     {
         crate::print!("a");
+    }
+    loop {
+        
     }
 }
 

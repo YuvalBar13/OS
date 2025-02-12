@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ({
+    ($($arg:tt)*) => ({x86_64::instructions::interrupts::without_interrupts(|| {
         use core::fmt::Write;
         let _ = write!($crate::terminal::output::framebuffer::WRITER
             .get()
@@ -8,7 +8,7 @@ macro_rules! print {
             .lock(),
             $($arg)*
         );
-    });
+    });})
 }
 
 #[macro_export]

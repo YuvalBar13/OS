@@ -29,9 +29,10 @@ mod multitasking;
 
 extern "C" fn testa()
 {
-    for _ in 0..50
+   for _ in 0..5
     {
         print!("a");
+        x86_64::instructions::hlt();
     }
     println!("finished a");
 }
@@ -39,28 +40,32 @@ extern "C" fn testa()
 
 extern "C" fn testb()
 {
-    for _ in 0..50
+    for _ in 0..5
     {
         print!("b");
+        x86_64::instructions::hlt();
     }
     println!("finished b");
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
+    multitasking::round_robin::add_task(testa);
     multitasking::round_robin::add_task(testb);
     multitasking::round_robin::add_task(testa);
+
+
     //let mut fat = FAtApi::new();
-    println!("main");
     loop {
-      //  terminal::interface::run(&mut fat);
+        //print!("m");
         x86_64::instructions::hlt();
     }
 }
 extern "C" fn main_kernel_mode()
 {
-    let mut fat = FAtApi::new();
+    //let mut fat = FAtApi::new();
+    println!("main");
     loop {
-        terminal::interface::run(&mut fat);
+        //terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
