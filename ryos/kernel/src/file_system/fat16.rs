@@ -248,19 +248,19 @@ impl FAtApi {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)] // Ensures the struct layout is C-compatible (for binary data)
 pub struct DirEntry {
-    pub filename: [u8; 11], // 8 characters for the filename + 3 for the extension
+    pub filename: [u8; 14], // 8 characters for the filename + 3 for the extension
     pub first_cluster: u16, // 2 bytes for the first cluster
 }
 
 impl DirEntry {
     // Create a new directory entry with a filename and first cluster
     fn new(filename: &str, first_cluster: u16) -> Self {
-        let mut filename_bytes = [0u8; 11];
+        let mut filename_bytes = [0u8; 14];
 
         // Ensure the filename fits into 8.3 format
-        let name = &filename[0..8.min(filename.len())]; // Max 8 characters for the name part
+        let name = &filename[0..11.min(filename.len())]; // Max 8 characters for the name part
         let extension = if filename.len() > 8 {
-            &filename[8..11.min(filename.len())] // Max 3 characters for the extension part
+            &filename[11..14.min(filename.len())] // Max 3 characters for the extension part
         } else {
             ""
         };
@@ -269,7 +269,7 @@ impl DirEntry {
         filename_bytes[..name.len()].copy_from_slice(name.as_bytes());
 
         // Copy the extension part (8-10) to the filename
-        filename_bytes[8..8 + extension.len()].copy_from_slice(extension.as_bytes());
+        filename_bytes[11..11 + extension.len()].copy_from_slice(extension.as_bytes());
 
         DirEntry {
             filename: filename_bytes,
@@ -278,7 +278,7 @@ impl DirEntry {
     }
     fn empty() -> Self {
         DirEntry {
-            filename: [0u8; 11],
+            filename: [0u8; 14],
             first_cluster: 0,
         }
     }
@@ -295,7 +295,7 @@ impl DirEntry {
 }
 
 const FIRST_DIRECTORY: u16 = 100;
-const ENTRY_COUNT: usize = 39; // each sector contains 39 entries so 5 sectors fit 196
+const ENTRY_COUNT: usize = 32;
 const DIRECTORY_MAGIC: u32 = 0xdead;
 #[derive(Debug, Clone, Copy)]
 
