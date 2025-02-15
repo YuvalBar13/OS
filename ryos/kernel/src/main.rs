@@ -4,13 +4,13 @@
 #![feature(naked_functions)]
 extern crate alloc;
 
-use core::arch::asm;
-use crate::file_system::fat16::{ FAtApi};
+use crate::file_system::fat16::FAtApi;
 use bootloader_api::BootInfo;
+use core::arch::asm;
 use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
 
-use embedded_graphics::prelude::{PixelIteratorExt};
+use embedded_graphics::prelude::PixelIteratorExt;
 use terminal::output::framebuffer::Color;
 use x86_64::VirtAddr;
 
@@ -24,46 +24,34 @@ mod file_system;
 mod heap_alloc;
 mod interrupts;
 mod memory;
-mod terminal;
 mod multitasking;
+mod terminal;
 
-extern "C" fn testa()
-{
-   for _ in 0..5
-    {
+extern "C" fn testa() {
+    for _ in 0..5 {
         print!("a");
         x86_64::instructions::hlt();
     }
-    println!("finished a");
 }
 
-
-extern "C" fn testb()
-{
-    for _ in 0..5
-    {
+extern "C" fn testb() {
+    for _ in 0..5 {
         print!("b");
         x86_64::instructions::hlt();
     }
-    println!("finished b");
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-    multitasking::round_robin::add_task(testa);
-    multitasking::round_robin::add_task(testb);
-    multitasking::round_robin::add_task(testa);
 
 
-
-    //let mut fat = FAtApi::new();
+   // let mut fat = FAtApi::new();
     loop {
-        //print!("m");
+     //   terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
-extern "C" fn main_kernel_mode()
-{
-//    let mut fat = FAtApi::new();
+extern "C" fn main_kernel_mode() {
+    //    let mut fat = FAtApi::new();
     println!("main");
 
     loop {
@@ -77,8 +65,6 @@ fn panic(_info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-
-
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
 
@@ -88,9 +74,15 @@ fn init(boot_info: &'static mut BootInfo) {
     terminal::output::framebuffer::init_writer(my_frame_buffer.shallow_copy().get_buffer());
 
     let mut frame_buffer = my_frame_buffer.get_buffer();
-   //  let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
+    //  let mut display = terminal::output::framebuffer::Display::new(&mut frame_buffer);
     print_logo();
     init_memory(boot_info);
+    //
+    multitasking::round_robin::add_task(testa);
+    multitasking::round_robin::add_task(testb);
+    multitasking::round_robin::add_task(testa);
+    multitasking::round_robin::add_task(testb);
+    multitasking::round_robin::add_task(testa);
 
 
     init_interrupts();

@@ -67,7 +67,6 @@ extern "x86-interrupt" fn timer_interrupt_handler(
 
     schedule();
 
-    print!(".");
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(
