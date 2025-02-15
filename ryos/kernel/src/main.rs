@@ -80,9 +80,9 @@ fn init(boot_info: &'static mut BootInfo) {
     //
     multitasking::round_robin::add_task(testa);
     multitasking::round_robin::add_task(testb);
-    multitasking::round_robin::add_task(testa);
-    multitasking::round_robin::add_task(testb);
-    multitasking::round_robin::add_task(testa);
+    // multitasking::round_robin::add_task(testa);
+    // multitasking::round_robin::add_task(testb);
+    // multitasking::round_robin::add_task(testa);
 
 
     init_interrupts();

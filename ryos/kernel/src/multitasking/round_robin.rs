@@ -103,7 +103,6 @@ impl TaskManager {
                     schedule();
                 });
             }
-            self.delete = None;
         }
 
         x86_64::instructions::interrupts::without_interrupts(|| {
