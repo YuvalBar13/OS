@@ -44,10 +44,19 @@ extern "C" fn testb() {
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
     //multitasking::round_robin::add_task(testa);
+    multitasking::round_robin::add_task(testa);
+    multitasking::round_robin::add_task(testb);
 
-    // let mut fat = FAtApi::new();
+    x86_64::instructions::hlt();
+    x86_64::instructions::hlt();
+    x86_64::instructions::hlt();
+    x86_64::instructions::hlt();
+    x86_64::instructions::hlt();
+    println!("\n\nreal main");
+
+   let mut fat = FAtApi::new();
     loop {
-      // terminal::interface::run(&mut fat);
+      terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
@@ -82,11 +91,7 @@ fn init(boot_info: &'static mut BootInfo) {
     print_logo();
     init_memory(boot_info);
     //
-    multitasking::round_robin::add_task(testa);
-    multitasking::round_robin::add_task(testb);
-    // multitasking::round_robin::add_task(testa);
-    // multitasking::round_robin::add_task(testb);
-    // multitasking::round_robin::add_task(testa);
+
 
 
     init_interrupts();

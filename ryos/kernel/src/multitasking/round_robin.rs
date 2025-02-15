@@ -2,6 +2,7 @@ use crate::{print, println};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::{asm, naked_asm};
+use core::ptr::null_mut;
 use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -10,7 +11,7 @@ use x86_64::instructions::interrupts;
 const STACK_SIZE: usize = 512;
 #[repr(align(16))]
 pub struct Task {
-    stack: Box<[u64; STACK_SIZE]>,
+    stack: Option<Box<[u64; STACK_SIZE]>>,
     id: usize,
     pub rsp: u64,
 }
@@ -25,8 +26,15 @@ impl Task {
         stack[STACK_SIZE - 18] = 0x202;
         Task {
             rsp: stack.as_ptr() as u64 + (((STACK_SIZE - 18) as u64) * 8),
-            stack,
+            stack: Some(stack),
             id,
+        }
+    }
+    fn new_main() -> Self {
+        Task {
+            rsp: 0,
+            stack: None,
+            id: 0,
         }
     }
 }
@@ -34,22 +42,21 @@ impl Task {
 pub struct TaskManager {
     tasks: Vec<Task>,
     current_task: u32,
-    switching: AtomicBool,
     delete: Option<u32>,
     next_id: u32,
+    running: u32,
 }
 
 impl TaskManager {
     pub fn new() -> Self {
         let mut tasks = Vec::new();
-        tasks.push(Task::new(null_fn, 0));
-        tasks.push(Task::new(crate::main_kernel_mode, 0));
+        tasks.push(Task::new_main());
         TaskManager {
             tasks,
             current_task: 0,
-            switching: AtomicBool::new(false),
             delete: None,
             next_id: 1,
+            running: 0,
         }
     }
 
@@ -63,45 +70,49 @@ impl TaskManager {
 
     pub fn schedule(&mut self) {
 
-        // Use a more robust synchronization mechanism
-        if self.switching.load(Ordering::Acquire) {
+        if self.tasks.len() == 1 {
             return;
         }
-        self.switching.store(true, Ordering::Release);
 
-        let mut old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
+        let old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
         self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
-        let mut new_rsp = self.tasks[self.current_task as usize].rsp;
+        let new_rsp = self.tasks[self.current_task as usize].rsp;
 
-        if (self.current_task == 1) {
-            if self.tasks.len() <= 2 {
-                old_task_rsp = Box::new(1u64).as_mut();
-            } else {
-                self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
-                new_rsp = self.tasks[self.current_task as usize].rsp;
-            }
-        }
         // in case that one index has been deleted last schedule
         if let Some(delete_index) = self.delete.take() {
             if delete_index < self.tasks.len() as u32 {
+                println!("deleting index: {}", delete_index);
                 self.tasks.remove(delete_index as usize);
 
                 //Adjust current task index if necessary(remove shift left by one all the indexes that greater than the removed index
                 if self.current_task > delete_index {
                     self.current_task -= 1;
                 }
-
-                x86_64::instructions::interrupts::without_interrupts(|| {
-                    unsafe { TASK_MANAGER.force_unlock() };
-                    self.switching.store(false, Ordering::Release);
-                    schedule();
-                });
+                if self.tasks.len() == 1 {
+                    let mut a = Box::new(0u64);
+                    unsafe {
+                        unsafe { TASK_MANAGER.force_unlock() };
+                        switch_context(self.tasks[0].rsp, a.as_mut());
+                    }
+                }
+                return;
             }
         }
 
-        x86_64::instructions::interrupts::without_interrupts(|| {
+        if self.tasks.len() == 2 && self.running == 1 {
+            self.current_task = 1;
+            return;
+        }
+
+        if (self.current_task == 0) {
+            return;
+        }
+
+        interrupts::without_interrupts(|| {
             unsafe { TASK_MANAGER.force_unlock() };
-            self.switching.store(false, Ordering::Release);
+            println!("current running task: {}", self.current_task);
+            println!("current stack pointer: {}", self.tasks[self.current_task as usize].rsp);
+            self.running = self.current_task;
             unsafe {
                 switch_context(new_rsp, old_task_rsp);
             }
@@ -174,9 +185,4 @@ pub fn add_task(func: extern "C" fn()) {
     TASK_MANAGER.lock().add_task(func);
 }
 
-extern "C" fn null_fn() {
-    for _ in 0..5 {
-        print!("y");
-        x86_64::instructions::hlt();
-    }
-}
+
