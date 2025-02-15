@@ -1,13 +1,16 @@
+use x86_64::instructions::interrupts::without_interrupts;
+
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ({x86_64::instructions::interrupts::without_interrupts(|| {
         use core::fmt::Write;
-        let _ = write!($crate::terminal::output::framebuffer::WRITER
+        let _ =  x86_64::instructions::interrupts::without_interrupts(|| {write!($crate::terminal::output::framebuffer::WRITER
             .get()
             .expect("Writer not initialized")
             .lock(),
             $($arg)*
-        );
+        )});
+
     });})
 }
 

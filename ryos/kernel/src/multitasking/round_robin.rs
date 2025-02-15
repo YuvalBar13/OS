@@ -33,6 +33,7 @@ impl Task {
 
 }
 
+
 pub struct TaskManager {
     tasks: Vec<Task>,
     current_task: u32,
@@ -40,6 +41,7 @@ pub struct TaskManager {
     delete: Option<u32>,
     next_id : u32,
     main: Task,
+    is_main_running: bool,
 }
 
 impl TaskManager {
@@ -50,7 +52,8 @@ impl TaskManager {
             current_task: 0,
             switching: AtomicBool::new(false),
             delete: None,
-            next_id: 0
+            next_id: 0,
+            is_main_running: false
         }
     }
 
@@ -61,14 +64,16 @@ impl TaskManager {
         self.tasks.push(Task::new(function, self.next_id as usize));
         self.next_id += 1;
 
-        //println!("{}", self.tasks.len());
     }
 
     pub fn schedule(&mut self) {
         if self.tasks.len() <= 1 {
+            if self.is_main_running {return;} // make sure that the main isn't run already
+            self.is_main_running = true;
             println!("test0");
             let mut boxed = Box::new(1u64);
             unsafe {switch_context(self.main.rsp, boxed.as_mut());}
+            println!("no tasks, returning to the interrupt loop");
             return;  // Need at least two tasks to switch
         }
         // Use a more robust synchronization mechanism
@@ -80,19 +85,25 @@ impl TaskManager {
         let old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
         self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
         let new_rsp = self.tasks[self.current_task as usize].rsp;
+        self.is_main_running = false;
 
+
+        // in case that one index has been deleted last schedule
         if let Some(delete_index) = self.delete.take() {
             if delete_index < self.tasks.len() as u32 {
                 self.tasks.remove(delete_index as usize);
-                println!("removed task");
+                println!("Task {} as been removed!", delete_index);
 
                 //Adjust current task index if necessary
                 if self.current_task >= self.tasks.len() as u32 {
-                    self.current_task -= 1;
                     if self.tasks.len() < 1
                     {
                         self.current_task = 0;
                     }
+                    else {
+                        self.current_task -= 1;
+                    }
+
                 }
 
                 x86_64::instructions::interrupts::without_interrupts( || {
@@ -162,17 +173,19 @@ lazy_static! {
     pub static ref TASK_MANAGER: Mutex<TaskManager> = Mutex::new(TaskManager::new());
 }
 
-
 pub fn schedule() {
+    unsafe { TASK_MANAGER.force_unlock(); }
     TASK_MANAGER.lock().schedule();
 }
 fn remove_task()
 {
-    println!("removing task {}", TASK_MANAGER.lock().current_task);
+    unsafe { TASK_MANAGER.force_unlock(); }
+    println!("removing task {}...", TASK_MANAGER.lock().current_task);
     TASK_MANAGER.lock().delete_current();
     schedule();
 }
 pub fn add_task(func: extern "C" fn()) {
+    println!("adding task {}", func as u64);
     TASK_MANAGER.lock().add_task(func);
 }
 

@@ -54,6 +54,7 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     multitasking::round_robin::add_task(testa);
 
 
+
     //let mut fat = FAtApi::new();
     loop {
         //print!("m");
@@ -62,8 +63,9 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 }
 extern "C" fn main_kernel_mode()
 {
-    //let mut fat = FAtApi::new();
+//    let mut fat = FAtApi::new();
     println!("main");
+
     loop {
         //terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();

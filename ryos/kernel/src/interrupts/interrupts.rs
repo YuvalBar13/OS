@@ -114,5 +114,6 @@ extern "x86-interrupt" fn page_fault_handler(
 )
 {
 
+    eprintln!("error code {:?}", error_code);
     panic!("EXCEPTION: PAGE FAULT {:?}", stack_frame);
 }
