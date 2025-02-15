@@ -1,4 +1,4 @@
-use crate::println;
+use crate::{print, println};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::{asm, naked_asm};
@@ -37,20 +37,19 @@ pub struct TaskManager {
     switching: AtomicBool,
     delete: Option<u32>,
     next_id: u32,
-    main: Task,
-    is_main_running: bool,
 }
 
 impl TaskManager {
     pub fn new() -> Self {
+        let mut tasks = Vec::new();
+        tasks.push(Task::new(null_fn, 0));
+        tasks.push(Task::new(crate::main_kernel_mode, 0));
         TaskManager {
-            main: Task::new(crate::main_kernel_mode, 0),
-            tasks: Vec::new(),
+            tasks,
             current_task: 0,
             switching: AtomicBool::new(false),
             delete: None,
             next_id: 1,
-            is_main_running: false,
         }
     }
 
@@ -63,35 +62,30 @@ impl TaskManager {
     }
 
     pub fn schedule(&mut self) {
-        if self.tasks.len() <= 1 {
-            if self.is_main_running {
-                return;
-            } // make sure that the main isn't run already
-            self.is_main_running = true;
-            let mut boxed = Box::new(1u64);
-            unsafe {
-                switch_context(self.main.rsp, boxed.as_mut());
-            }
-            println!("no tasks, returning to the interrupt loop");
-            return; // Need at least two tasks to switch
-        }
+
         // Use a more robust synchronization mechanism
         if self.switching.load(Ordering::Acquire) {
             return;
         }
         self.switching.store(true, Ordering::Release);
 
-        let old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
+        let mut old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
         self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
-        let new_rsp = self.tasks[self.current_task as usize].rsp;
-        self.is_main_running = false;
+        let mut new_rsp = self.tasks[self.current_task as usize].rsp;
 
+        if (self.current_task == 1) {
+            if self.tasks.len() <= 2 {
+                old_task_rsp = Box::new(1u64).as_mut();
+            } else {
+                self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
+                new_rsp = self.tasks[self.current_task as usize].rsp;
+            }
+        }
         // in case that one index has been deleted last schedule
         if let Some(delete_index) = self.delete.take() {
             if delete_index < self.tasks.len() as u32 {
                 self.tasks.remove(delete_index as usize);
-                println!("removed task at index {}", delete_index);
-                println!("sum tasks: {}", self.tasks.len());
+
                 //Adjust current task index if necessary(remove shift left by one all the indexes that greater than the removed index
                 if self.current_task > delete_index {
                     self.current_task -= 1;
@@ -180,9 +174,9 @@ pub fn add_task(func: extern "C" fn()) {
     TASK_MANAGER.lock().add_task(func);
 }
 
-extern "C" fn print_no() {
-    for _ in 0..50 {
-        crate::print!("a");
+extern "C" fn null_fn() {
+    for _ in 0..5 {
+        print!("y");
+        x86_64::instructions::hlt();
     }
-    loop {}
 }

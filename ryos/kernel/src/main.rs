@@ -4,6 +4,7 @@
 #![feature(naked_functions)]
 extern crate alloc;
 
+use alloc::boxed::Box;
 use crate::file_system::fat16::FAtApi;
 use bootloader_api::BootInfo;
 use core::arch::asm;
@@ -42,20 +43,23 @@ extern "C" fn testb() {
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
+    //multitasking::round_robin::add_task(testa);
 
-
-   // let mut fat = FAtApi::new();
+    // let mut fat = FAtApi::new();
     loop {
-     //   terminal::interface::run(&mut fat);
+      // terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
 extern "C" fn main_kernel_mode() {
-    //    let mut fat = FAtApi::new();
-    println!("main");
-
+       let mut fat = FAtApi::new();
+    println!("\n\nmain");
+    let a = Box::new(1);
+    // multitasking::round_robin::add_task(testa);
+    let a = 1;
+    println!("{}", a +1 );
     loop {
-        //terminal::interface::run(&mut fat);
+        print!("m");
         x86_64::instructions::hlt();
     }
 }
