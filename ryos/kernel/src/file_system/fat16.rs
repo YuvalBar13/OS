@@ -1,4 +1,4 @@
-use crate::file_system::disk_driver::{DiskManager, SECTOR_SIZE};
+use crate::file_system::disk_driver::{Disk, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
 use crate::file_system::errors::FileSystemError::{
     BadSector, FileAlreadyExists, FileNotFound, IndexOutOfBounds, OutOfSpace, UnusedSector,
@@ -89,7 +89,7 @@ impl FAT {
     fn is_valid(&self) -> bool {
         self.entries[0].as_bin() == Self::MAGIC_NUMBER
     }
-    fn load_or_create(disk_manager: &DiskManager) -> FAT {
+    fn load_or_create(disk_manager: &Disk) -> FAT {
         match FAT::load(disk_manager) {
             Ok(fat) if fat.is_valid() => {
                 println!("FAT loaded successfully and is valid.");
@@ -106,7 +106,7 @@ impl FAT {
         }
     }
 
-    fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
+    fn save(&self, disk_manager: &Disk) -> Result<(), FileSystemError> {
         // Save the FAT table to disk
         disk_manager.write(
             self as *const FAT as *const u8,
@@ -114,7 +114,7 @@ impl FAT {
             1,
         )
     }
-    fn load(disk_manager: &DiskManager) -> Result<FAT, FileSystemError> {
+    fn load(disk_manager: &Disk) -> Result<FAT, FileSystemError> {
         // Load the FAT table from disk
         let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
         match disk_manager.read(buffer.as_mut_ptr(), FIRST_USABLE_SECTOR as u64 - 1, 1) {
@@ -153,18 +153,17 @@ impl FAT {
 
 pub struct FAtApi {
     table: FAT,
-    disk_manager: DiskManager,
+    disk_manager: Disk,
     directory: Directory,
 }
 
 impl FAtApi {
     pub fn new() -> Self {
-        let disk_manager = DiskManager::new();
-        disk_manager.check().expect("Error init disk at FATApi");
+       let disk = Disk::new();
         FAtApi {
-            table: FAT::load_or_create(&disk_manager),
-            directory: Directory::load_or_create_dir(&disk_manager),
-            disk_manager,
+            table: FAT::load_or_create(&disk),
+            directory: Directory::load_or_create_dir(&disk),
+            disk_manager: disk,
         }
     }
     pub fn save(&self) -> Result<(), FileSystemError> {
@@ -301,17 +300,17 @@ const DIRECTORY_MAGIC: u32 = 0xdead;
 
 pub struct Directory {
     magic: u32,
-    entries: [DirEntry; ENTRY_COUNT],
+    entries: [DirEntry; ENTRY_COUNT * 8 - 1],
 }
 
 impl Directory {
     fn new() -> Self {
         Directory {
             magic: DIRECTORY_MAGIC,
-            entries: [DirEntry::empty(); ENTRY_COUNT],
+            entries: [DirEntry::empty(); ENTRY_COUNT * 8 - 1],
         }
     }
-    pub fn load_or_create_dir(disk_manager: &DiskManager) -> Directory {
+    pub fn load_or_create_dir(disk_manager: &Disk) -> Directory {
         match Directory::load(&disk_manager) {
             Ok(dir) => {
                 println!("Directory loaded successfully and is valid.");
@@ -350,7 +349,7 @@ impl Directory {
         }
     }
 
-    fn save(&self, disk_manager: &DiskManager) -> Result<(), FileSystemError> {
+    fn save(&self, disk_manager: &Disk) -> Result<(), FileSystemError> {
         // Transmute the entire directory structure into a byte slice
         let bytes = unsafe {
             core::slice::from_raw_parts(
@@ -359,13 +358,13 @@ impl Directory {
             )
         };
 
-        disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 1)
+        disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 8)
     }
 
-    fn load(disk_manager: &DiskManager) -> Result<Directory, FileSystemError> {
+    fn load(disk_manager: &Disk) -> Result<Directory, FileSystemError> {
         let mut buffer = [0u8; core::mem::size_of::<Directory>()];
 
-        disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 1)?;
+        disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 8)?;
 
         let directory = unsafe { core::ptr::read(buffer.as_ptr() as *const Directory) };
 

@@ -35,6 +35,11 @@ pub struct Disk {
 }
 
 impl Disk {
+    pub fn new() -> Self {
+        let mut disk = Disk { enabled: false };
+        disk.check().expect("Error init disk");
+        disk
+    }
     //read multiple sectors from lba to specified target
     pub fn read<T>(&self, target: *mut T, lba: u64, sectors: u16) -> Result<(), FileSystemError> {
         if !self.enabled {
@@ -181,32 +186,4 @@ impl Disk {
     }
 }
 
-
-pub struct DiskManager
-{
-    disk: *const Mutex<Disk>
-}
-
-impl DiskManager {
-    // Public safe interface methods
-    pub fn new() -> Self {
-        unsafe { DiskManager { disk: &raw const DISK as *const Mutex<Disk> } }
-    }
-
-    pub fn check(&self) -> Result<(), FileSystemError> {
-        unsafe { (*self.disk).lock().check() }
-    }
-
-    pub fn write(&self, buffer: *const u8, sector: u64, count: u16) -> Result<(), FileSystemError> {
-        unsafe { (*self.disk).lock().write(buffer, sector, count) }
-    }
-
-    pub fn read(&self, buffer: *mut u8, sector: u64, count: u16) -> Result<(), FileSystemError> {
-        unsafe { (*self.disk).lock().read(buffer, sector, count) }
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        unsafe {(*self.disk).lock().enabled }
-    }
-}
 
