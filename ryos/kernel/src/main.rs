@@ -29,37 +29,37 @@ mod multitasking;
 mod terminal;
 
 extern "C" fn testa() {
-    for _ in 0..5 {
+    for _ in 0..50 {
         print!("a");
-        x86_64::instructions::hlt();
     }
 }
 
 extern "C" fn testb() {
-    for _ in 0..5 {
+    for _ in 0..50 {
         print!("b");
-        x86_64::instructions::hlt();
     }
 }
 
 extern "C" fn testc() {
-    for _ in 0..5 {
+    for _ in 0..50{
         print!("c");
-        x86_64::instructions::hlt();
+    }
+}
+
+extern "C" fn testd() {
+    for _ in 0..50 {
+        print!("d");
     }
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-   multitasking::round_robin::add_task(testc);
+    multitasking::round_robin::add_task(testc);
     multitasking::round_robin::add_task(testa);
     multitasking::round_robin::add_task(testb);
-    // multitasking::round_robin::add_task(testa);
-    // multitasking::round_robin::add_task(testa);
+    multitasking::round_robin::add_task(testd);
+    multitasking::round_robin::add_task(testa);
 
-    x86_64::instructions::hlt();
-    x86_64::instructions::hlt();
-    x86_64::instructions::hlt();
-    x86_64::instructions::hlt();
+
     x86_64::instructions::hlt();
     println!("\n\nreal main");
 
@@ -69,18 +69,7 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
         x86_64::instructions::hlt();
     }
 }
-extern "C" fn main_kernel_mode() {
-       let mut fat = FAtApi::new();
-    println!("\n\nmain");
-    let a = Box::new(1);
-    // multitasking::round_robin::add_task(testa);
-    let a = 1;
-    println!("{}", a +1 );
-    loop {
-        print!("m");
-        x86_64::instructions::hlt();
-    }
-}
+
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     eprintln!("{}", _info);

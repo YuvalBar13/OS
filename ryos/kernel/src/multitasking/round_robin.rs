@@ -94,7 +94,7 @@ impl TaskManager {
                 }
                 self.running = self.current_task;
                 // in case that there is only main and one more task run the task
-                if (self.running == 1 || self.running == 0) && self.tasks.len() == 2 {
+                if (self.running == 1 ) && self.tasks.len() == 2 {
                     self.running = 1;
                     self.current_task = 1;
                     unsafe {
@@ -111,6 +111,7 @@ impl TaskManager {
         }
 
         if self.current_task == 0{
+            schedule();
             return;
         }
 
