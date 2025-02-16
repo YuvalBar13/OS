@@ -5,7 +5,7 @@ use crate::{change_writer_color, eprintln, print, print_logo, println};
 use crate::file_system::disk_driver::SECTOR_SIZE;
 use crate::file_system::fat16::FAtApi;
 use crate::terminal::output::framebuffer::{Color, DEFAULT_COLOR};
-
+use crate::file_system::errors::FileSystemError;
 const OUTPUT_COLOR: Color = Color::new(255, 200, 35);
 pub fn run(fs: &mut FAtApi) {
     print!(">>> ");
@@ -141,6 +141,10 @@ fn write(name: &str, buffer: [u8; SECTOR_SIZE], fs: &mut FAtApi) {
                 Err(e) => eprintln!("Error saving disk: {:?}", e)
             }
         }
+        Err(FileSystemError::FileNotFound) =>
+            {
+                eprintln!("File {} not found!", name);
+            }
         Err(e) => {
             eprintln!("Error adding entry to disk {:?}", e);
         }
@@ -156,6 +160,7 @@ fn help() {
     println!("write - write to a file");
     println!("ls - list the contents of the disk");
     println!("touch - create a new file");
+    println!("rm - remove file");
 }
 
 fn to_buffer(str: &str) -> [u8; SECTOR_SIZE] {

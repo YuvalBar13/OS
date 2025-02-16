@@ -109,7 +109,7 @@ impl TaskManager {
             self.current_task = 1;
             return;
         }
-
+        // in case of the current task is the main and there is more tasks skip
         if self.current_task == 0{
             schedule();
             return;
