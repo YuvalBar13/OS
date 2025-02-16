@@ -65,6 +65,9 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
             }
             else { eprintln!("Usage: rm [name]") }
         },
+        "multitasking" => {
+            crate::test_multitasking();
+        },
         _ => eprintln!("{}: command not found", parts[0]),
     }
     change_writer_color(DEFAULT_COLOR);
@@ -161,6 +164,7 @@ fn help() {
     println!("ls - list the contents of the disk");
     println!("touch - create a new file");
     println!("rm - remove file");
+    println!("multitasking - test multitasking")
 }
 
 fn to_buffer(str: &str) -> [u8; SECTOR_SIZE] {

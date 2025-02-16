@@ -41,8 +41,6 @@ extern "C" fn testb() {
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-    test_multitasking();
-    x86_64::instructions::hlt();
     println!("\n\nreal main");
 
     let mut fat = FAtApi::new();
