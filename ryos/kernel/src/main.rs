@@ -31,33 +31,37 @@ mod terminal;
 extern "C" fn testa() {
     for _ in 0..50 {
         print!("a");
+        x86_64::instructions::hlt();
+
     }
 }
 
 extern "C" fn testb() {
     for _ in 0..50 {
         print!("b");
+        x86_64::instructions::hlt();
+
     }
 }
 
 extern "C" fn testc() {
     for _ in 0..50{
         print!("c");
+        x86_64::instructions::hlt();
+
     }
 }
 
 extern "C" fn testd() {
     for _ in 0..50 {
         print!("d");
+        x86_64::instructions::hlt();
+
     }
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-    multitasking::round_robin::add_task(testc);
-    multitasking::round_robin::add_task(testa);
-    multitasking::round_robin::add_task(testb);
-    multitasking::round_robin::add_task(testd);
-    multitasking::round_robin::add_task(testa);
+   // test_multitasking();
 
 
     x86_64::instructions::hlt();
@@ -75,7 +79,13 @@ fn panic(_info: &PanicInfo) -> ! {
     eprintln!("{}", _info);
     hlt_loop();
 }
-
+fn test_multitasking() {
+    multitasking::round_robin::add_task(testc);
+    multitasking::round_robin::add_task(testa);
+    multitasking::round_robin::add_task(testb);
+    multitasking::round_robin::add_task(testd);
+    multitasking::round_robin::add_task(testa);
+}
 fn init(boot_info: &'static mut BootInfo) {
     let frame_buffer_optional = &mut boot_info.framebuffer;
 

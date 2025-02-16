@@ -1,10 +1,12 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use crate::terminal::input::buffer::BUFFER;
-use crate::{eprintln, print, print_logo, println};
+use crate::{change_writer_color, eprintln, print, print_logo, println};
 use crate::file_system::disk_driver::SECTOR_SIZE;
 use crate::file_system::fat16::FAtApi;
+use crate::terminal::output::framebuffer::{Color, DEFAULT_COLOR};
 
+const OUTPUT_COLOR: Color = Color::new(255, 200, 35);
 pub fn run(fs: &mut FAtApi) {
     print!(">>> ");
     let input = BUFFER.lock().get_input();
@@ -15,7 +17,7 @@ pub fn run(fs: &mut FAtApi) {
 
 pub fn handle_command(command: &str, fs: &mut FAtApi) {
     let parts: Vec<&str> = command.splitn(3, ' ').filter(|s| !s.is_empty()).collect();
-
+    change_writer_color(OUTPUT_COLOR);
     match parts[0] {
         "shutdown" => shutdown(),
         "reboot" => reboot(),
@@ -65,6 +67,7 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
         },
         _ => eprintln!("{}: command not found", parts[0]),
     }
+    change_writer_color(DEFAULT_COLOR);
 }
 
 fn clear_screen() {
