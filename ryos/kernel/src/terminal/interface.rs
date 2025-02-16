@@ -1,5 +1,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt::Error;
 use crate::terminal::input::buffer::BUFFER;
 use crate::{change_writer_color, eprintln, print, print_logo, println};
 use crate::file_system::disk_driver::SECTOR_SIZE;
@@ -33,41 +34,42 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
         "logo" => {
             clear_screen();
             print_logo();
-        },
+        }
         "cat" => {
             if let Some(name) = parts.get(1) {
                 cat(name, fs);
-            }
-            else { eprintln!("Usage: cat [name]") }
-        },
+            } else { eprintln!("Usage: cat [name]") }
+        }
         "write" => {
             if let Some(name) = parts.get(1) {
                 if let Some(buffer) = parts.get(2) {
                     write(name, to_buffer(buffer), fs);
-                }
-                else { eprintln!("Usage: write [name] [buffer]") }
-            }
-            else { eprintln!("Usage: write [name] [buffer]") }
-
-        },
+                } else { eprintln!("Usage: write [name] [buffer]") }
+            } else { eprintln!("Usage: write [name] [buffer]") }
+        }
+        "append" => {
+            if let Some(name) = parts.get(1) {
+                if let Some(buffer) = parts.get(2) {
+                    append_data(name, to_buffer(buffer), fs);
+                } else { eprintln!("Usage: append [name] [buffer]") }
+            } else { eprintln!("Usage: append [name] [buffer]") }
+        }
         "ls" => {
             ls(fs);
-        },
+        }
         "touch" => {
             if let Some(name) = parts.get(1) {
                 touch(name, fs);
-            }
-            else { eprintln!("Usage: touch [name]") }
-        },
+            } else { eprintln!("Usage: touch [name]") }
+        }
         "rm" => {
             if let Some(name) = parts.get(1) {
                 rm(name, fs);
-            }
-            else { eprintln!("Usage: rm [name]") }
-        },
+            } else { eprintln!("Usage: rm [name]") }
+        }
         "multitasking" => {
             crate::test_multitasking();
-        },
+        }
         _ => eprintln!("{}: command not found", parts[0]),
     }
     change_writer_color(DEFAULT_COLOR);
@@ -104,36 +106,43 @@ fn reboot() {
     }
 }
 fn cat(name: &str, fs: &FAtApi) {
-    match fs.index_by_name(name){
-        Ok(index) => {
-            match fs.get_data(index as usize) {
-                Ok(data) => {
-                    for i in 0..SECTOR_SIZE {
-                        if data[i] == 0 {
-                            if i != 0 // in case that the file isnt empty but isnt full print a new line at teh end
-                            {
-                                println!();
-                            }
-                            return;
-                        }
-                        print!("{}", data[i] as char);
-                    }
-                    println!(); // new line
-                    match fs.save()
-                    {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error saving disk: {:?}", e)
-                    }
-                }
-                Err(e) => eprintln!("Error: {:?}", e),
+    let data = get_file_data(name, fs);
+    if data.is_none() { return; }
+    let data = data.unwrap();
+    for i in 0..SECTOR_SIZE {
+        if data[i] == 0 {
+            if i != 0 // in case that the file isn't empty but isn't full print a new line at the end
+            {
+                println!();
             }
+            return;
         }
-        Err(e) => eprintln!("Error: {:?}", e),
+        print!("{}", data[i] as char);
     }
+    println!(); // new line
 }
 
+fn get_file_data(name: &str, fs: &FAtApi) -> Option<[u8; SECTOR_SIZE]>
+{
+    match fs.index_by_name(name) {
+        Ok(index) => {
+            return match fs.get_data(index as usize) {
+                Ok(data) => {
+                    Some(data)
+                }
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            return None;
+        }
+    }
+}
 fn write(name: &str, buffer: [u8; SECTOR_SIZE], fs: &mut FAtApi) {
-
     match fs.index_by_name(name)
     {
         Ok(index) => {
@@ -164,7 +173,8 @@ fn help() {
     println!("ls - list the contents of the disk");
     println!("touch - create a new file");
     println!("rm - remove file");
-    println!("multitasking - test multitasking")
+    println!("multitasking - test multitasking");
+    println!("append - add data to task");
 }
 
 fn to_buffer(str: &str) -> [u8; SECTOR_SIZE] {
@@ -210,4 +220,21 @@ fn rm(name: &str, fs: &mut FAtApi)
             eprintln!("Error {:?}", e);
         }
     }
+}
+
+fn append_data(name: &str, new_data: [u8; SECTOR_SIZE], fs: &mut FAtApi)
+{
+    let data = get_file_data(name, fs);
+    if data.is_none() { return; }
+    let mut data = data.unwrap();
+    let mut new_data_index = 0;
+    for i in 0..SECTOR_SIZE
+    {
+        if data[i] == 0
+        {
+            data[i] = new_data[new_data_index];
+            new_data_index += 1;
+        }
+    }
+    write(name, data, fs);
 }

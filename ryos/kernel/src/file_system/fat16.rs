@@ -255,21 +255,8 @@ impl DirEntry {
     // Create a new directory entry with a filename and first cluster
     fn new(filename: &str, first_cluster: u16) -> Self {
         let mut filename_bytes = [0u8; 14];
-
-        // Ensure the filename fits into 8.3 format
-        let name = &filename[0..11.min(filename.len())]; // Max 8 characters for the name part
-        let extension = if filename.len() > 8 {
-            &filename[11..14.min(filename.len())] // Max 3 characters for the extension part
-        } else {
-            ""
-        };
-
-        // Copy the name part (0-7) to the filename
-        filename_bytes[..name.len()].copy_from_slice(name.as_bytes());
-
-        // Copy the extension part (8-10) to the filename
-        filename_bytes[11..11 + extension.len()].copy_from_slice(extension.as_bytes());
-
+        let len = filename.len().min(14);
+        filename_bytes[..len].copy_from_slice(&filename.as_bytes()[..len]);
         DirEntry {
             filename: filename_bytes,
             first_cluster,
