@@ -42,6 +42,7 @@ impl Disk {
     }
     //read multiple sectors from lba to specified target
     pub fn read<T>(&self, target: *mut T, lba: u64, sectors: u16) -> Result<(), FileSystemError> {
+        let lba = lba + 100;
         if !self.enabled {
             return Err(FileSystemError::DiskNotAvailable);
         }
@@ -81,6 +82,7 @@ impl Disk {
         Ok(())
     }
     pub fn write<T>(&self, source: *const T, lba: u64, sectors: u16) -> Result<(), FileSystemError> {
+        let lba = lba + 100;
         if !self.enabled {
             return  Err(FileSystemError::DiskNotAvailable)
         }

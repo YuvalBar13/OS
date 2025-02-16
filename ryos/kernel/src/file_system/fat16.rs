@@ -5,7 +5,10 @@ use crate::file_system::errors::FileSystemError::{
 };
 use crate::println;
 use alloc::string::String;
-const FIRST_USABLE_SECTOR: u16 = 120;
+use alloc::vec::Vec;
+use spin::Mutex;
+
+const FIRST_USABLE_SECTOR: u16 = 20;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -208,20 +211,17 @@ impl FAtApi {
         match self.directory.get_entry(name) {
             Err(_) => {
                 let index = self.table.first_free_entry()?;
-                let mut sector: u16 = 0;
-                if (index != 1) {
-                    // for the first entry
-                    sector = self.get_sector(index - 1)?;
-                }
+
 
                 let zero = [0; SECTOR_SIZE];
+                let sector = SECTOR_ALLOCATOR.lock().get_free_sector();
                 self.disk_manager.write(
                     zero.as_ptr(),
-                    sector as u64 + 1 + FIRST_USABLE_SECTOR as u64,
+                    sector as u64,
                     1,
                 )?;
 
-                self.add_entry(FATEntry::new_used(sector + 1)?)?;
+                self.add_entry(FATEntry::new_used(sector)?)?;
                 Ok(self
                     .directory
                     .add_entry(DirEntry::new(name, index as u16))?)
@@ -239,7 +239,9 @@ impl FAtApi {
     }
 
     pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
-        self.table.remove_entry(self.index_by_name(name)?)?;
+        let entry_index = self.index_by_name(name)?;
+        SECTOR_ALLOCATOR.lock().free(self.table.entries[entry_index as usize].get_sector()?);
+        self.table.remove_entry(entry_index)?;
         Ok(self.directory.remove_entry(name)) // cant failed cause teh index by name found that there is entry with the name
     }
 }
@@ -280,7 +282,7 @@ impl DirEntry {
     }
 }
 
-const FIRST_DIRECTORY: u16 = 100;
+const FIRST_DIRECTORY: u16 = 0;
 const ENTRY_COUNT: usize = 32;
 const DIRECTORY_MAGIC: u32 = 0xdead;
 #[derive(Debug, Clone, Copy)]
@@ -384,3 +386,31 @@ impl Directory {
         }
     }
 }
+
+struct SectorAllocator
+{
+    next_free: u16,
+    freed_sectors: Vec<u16>,
+}
+
+impl SectorAllocator {
+    pub const fn new() -> Self
+    {
+        SectorAllocator { next_free: FIRST_USABLE_SECTOR, freed_sectors: Vec::new() }
+    }
+    pub fn get_free_sector(&mut self) -> u16
+    {
+        if self.freed_sectors.len() > 0
+        {
+            return self.freed_sectors.pop().unwrap()
+        }
+        self.next_free += 1;
+        self.next_free -1
+    }
+    pub fn free(&mut self, sector: u16)
+    {
+        self.freed_sectors.push(sector);
+    }
+}
+
+pub static SECTOR_ALLOCATOR: Mutex<SectorAllocator> = Mutex::new(SectorAllocator::new());
