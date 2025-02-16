@@ -231,33 +231,31 @@ impl Writer {
 
     fn scroll(&mut self) {
         let info = self.buffer.info();
+        // Calculate the number of bytes per pixel row.
         let bytes_per_line = info.stride * info.bytes_per_pixel;
         let char_height = self.char_height();
         let buffer = self.buffer.buffer_mut();
 
-        // Move all lines up by one character height
+        // Move every pixel row upward by one text row (i.e. char_height pixels).
         for line in 0..(info.height - char_height) {
             let src_offset = (line + char_height) * bytes_per_line;
             let dst_offset = line * bytes_per_line;
-            buffer.copy_within(
-                src_offset..(src_offset + bytes_per_line),
-                dst_offset,
-            );
+            buffer.copy_within(src_offset..(src_offset + bytes_per_line), dst_offset);
         }
 
-        // Clear the last line
-        for y in 0..char_height {
+        // Clear the bottom char_height rows (the “new” empty text row).
+        for y in (info.height - char_height)..info.height {
             for x in 0..info.width {
-                let pos = Position {
-                    x,
-                    y: info.height - char_height + y,
-                };
+                let pos = Position { x, y };
                 set_pixel_in(&mut self.buffer, pos, BACKGROUND_COLOR);
             }
         }
 
-        self.row_position -= 1;
+        // Set the text cursor to the bottom text row.
+        let total_rows = info.height / char_height;
+        self.row_position = total_rows - 1;
     }
+
 
     pub fn backspace(&mut self) {
         if self.column_position > 0 {

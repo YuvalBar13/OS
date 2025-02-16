@@ -4,8 +4,8 @@
 #![feature(naked_functions)]
 extern crate alloc;
 
-use alloc::boxed::Box;
 use crate::file_system::fat16::FAtApi;
+use alloc::boxed::Box;
 use bootloader_api::BootInfo;
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -30,46 +30,24 @@ mod terminal;
 
 extern "C" fn testa() {
     for _ in 0..50 {
-        print!("a");
-        x86_64::instructions::hlt();
-
+        print!("aaaaaaa");
     }
 }
 
 extern "C" fn testb() {
     for _ in 0..50 {
-        print!("b");
-        x86_64::instructions::hlt();
-
-    }
-}
-
-extern "C" fn testc() {
-    for _ in 0..50{
-        print!("c");
-        x86_64::instructions::hlt();
-
-    }
-}
-
-extern "C" fn testd() {
-    for _ in 0..50 {
-        print!("d");
-        x86_64::instructions::hlt();
-
+        print!("bbbbbbb");
     }
 }
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-   // test_multitasking();
-
-
+    test_multitasking();
     x86_64::instructions::hlt();
     println!("\n\nreal main");
 
-   let mut fat = FAtApi::new();
+    let mut fat = FAtApi::new();
     loop {
-      terminal::interface::run(&mut fat);
+        terminal::interface::run(&mut fat);
         x86_64::instructions::hlt();
     }
 }
@@ -80,10 +58,7 @@ fn panic(_info: &PanicInfo) -> ! {
     hlt_loop();
 }
 fn test_multitasking() {
-    multitasking::round_robin::add_task(testc);
-    multitasking::round_robin::add_task(testa);
     multitasking::round_robin::add_task(testb);
-    multitasking::round_robin::add_task(testd);
     multitasking::round_robin::add_task(testa);
 }
 fn init(boot_info: &'static mut BootInfo) {
@@ -99,8 +74,6 @@ fn init(boot_info: &'static mut BootInfo) {
     print_logo();
     init_memory(boot_info);
     //
-
-
 
     init_interrupts();
 }
