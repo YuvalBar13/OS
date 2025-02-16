@@ -41,11 +41,20 @@ extern "C" fn testb() {
         x86_64::instructions::hlt();
     }
 }
+
+extern "C" fn testc() {
+    for _ in 0..5 {
+        print!("c");
+        x86_64::instructions::hlt();
+    }
+}
 fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
-    //multitasking::round_robin::add_task(testa);
+   multitasking::round_robin::add_task(testc);
     multitasking::round_robin::add_task(testa);
     multitasking::round_robin::add_task(testb);
+    // multitasking::round_robin::add_task(testa);
+    // multitasking::round_robin::add_task(testa);
 
     x86_64::instructions::hlt();
     x86_64::instructions::hlt();

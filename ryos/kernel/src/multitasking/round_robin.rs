@@ -61,7 +61,7 @@ impl TaskManager {
     }
 
     fn delete_current(&mut self) {
-        self.delete = Some(self.current_task);
+        self.delete = Some(self.running);
     }
     pub fn add_task(&mut self, function: extern "C" fn()) {
         self.tasks.push(Task::new(function, self.next_id as usize));
@@ -69,33 +69,39 @@ impl TaskManager {
     }
 
     pub fn schedule(&mut self) {
-
         if self.tasks.len() == 1 {
             return;
         }
 
-        let old_task_rsp: *mut u64 = &mut self.tasks[self.current_task as usize].rsp;
+        let old_task_rsp: *mut u64 = &mut self.tasks[self.running as usize].rsp;
         self.current_task = (self.current_task + 1) % self.tasks.len() as u32;
         let new_rsp = self.tasks[self.current_task as usize].rsp;
 
         // in case that one index has been deleted last schedule
         if let Some(delete_index) = self.delete.take() {
             if delete_index < self.tasks.len() as u32 {
-                println!("deleting index: {}", delete_index);
                 self.tasks.remove(delete_index as usize);
-
                 //Adjust current task index if necessary(remove shift left by one all the indexes that greater than the removed index
                 if self.current_task > delete_index {
                     self.current_task -= 1;
                 }
+                // in case the main is the only task that remain run the main
                 if self.tasks.len() == 1 {
-                    let mut a = Box::new(0u64);
                     unsafe {
                         unsafe { TASK_MANAGER.force_unlock() };
-                        switch_context(self.tasks[0].rsp, a.as_mut());
+                        switch_context(self.tasks[0].rsp, null_mut());
                     }
                 }
-                return;
+                self.running = self.current_task;
+                // in case that there is only main and one more task run the task
+                if (self.running == 1 || self.running == 0) && self.tasks.len() == 2 {
+                    self.running = 1;
+                    self.current_task = 1;
+                    unsafe {
+                        unsafe { TASK_MANAGER.force_unlock() };
+                        switch_context(self.tasks[1].rsp, null_mut());
+                    }
+                }
             }
         }
 
@@ -104,14 +110,12 @@ impl TaskManager {
             return;
         }
 
-        if (self.current_task == 0) {
+        if self.current_task == 0{
             return;
         }
 
         interrupts::without_interrupts(|| {
             unsafe { TASK_MANAGER.force_unlock() };
-            println!("current running task: {}", self.current_task);
-            println!("current stack pointer: {}", self.tasks[self.current_task as usize].rsp);
             self.running = self.current_task;
             unsafe {
                 switch_context(new_rsp, old_task_rsp);
@@ -139,7 +143,10 @@ pub unsafe extern "C" fn switch_context(new_rsp: u64, old_rsp: *mut u64) {
         "push r14",
         "push r15",
         "pushfq",         // Push flags onto stack
+        "cmp rsi, 0",
+        "jz 2f",
         "mov [rsi], rsp", // old_rsp is passed in rsi
+        "2:",
         // Switch stack pointer
         "mov rsp, rdi", // new_rsp is passed in rdi
         "popfq",        // Pop rflags from stack
