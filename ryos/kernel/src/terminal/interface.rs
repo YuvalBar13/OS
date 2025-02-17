@@ -62,6 +62,12 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
                 touch(name, fs);
             } else { eprintln!("Usage: touch [name]") }
         }
+        "mkdir" =>
+            {
+                if let Some(name) = parts.get(1) {
+                    mkdir(name, fs);
+                } else { eprintln!("mkdir: touch [name]") }
+            }
         "rm" => {
             if let Some(name) = parts.get(1) {
                 rm(name, fs);
@@ -237,4 +243,9 @@ fn append_data(name: &str, new_data: [u8; SECTOR_SIZE], fs: &mut FAtApi)
         }
     }
     write(name, data, fs);
+}
+fn mkdir(name: &str, fs: &mut FAtApi)
+{
+    fs.new_dir(name).unwrap();
+    fs.tmp(name);
 }
