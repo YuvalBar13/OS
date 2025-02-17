@@ -3,12 +3,15 @@ use crate::file_system::errors::FileSystemError;
 use crate::file_system::errors::FileSystemError::{
     BadSector, FileAlreadyExists, FileNotFound, IndexOutOfBounds, OutOfSpace, UnusedSector,
 };
-use crate::println;
+use crate::{change_writer_color, println};
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::ops::ControlFlow::Break;
 use spin::Mutex;
+use crate::terminal::interface::OUTPUT_COLOR;
+use crate::terminal::output::framebuffer::{Color, DEFAULT_COLOR};
 
-const FIRST_USABLE_SECTOR: u16 = 20;
+const FIRST_USABLE_SECTOR: u16 = 21;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -158,20 +161,25 @@ pub struct FAtApi {
     table: FAT,
     disk_manager: Disk,
     directory: Directory,
+    allocator: SectorAllocator
 }
 
 impl FAtApi {
     pub fn new() -> Self {
-       let disk = Disk::new();
+        let disk = Disk::new();
         FAtApi {
             table: FAT::load_or_create(&disk),
             directory: Directory::load_or_create_dir(&disk),
+            allocator: SectorAllocator::load_or_create(&disk),
             disk_manager: disk,
+
         }
     }
+
     pub fn save(&self) -> Result<(), FileSystemError> {
         self.table.save(&self.disk_manager)?;
-        self.directory.save(&self.disk_manager)
+        self.directory.save(&self.disk_manager)?;
+        self.allocator.save(&self.disk_manager)
     }
 
     pub fn add_entry(&mut self, entry: FATEntry) -> Result<(), FileSystemError> {
@@ -214,7 +222,7 @@ impl FAtApi {
 
 
                 let zero = [0; SECTOR_SIZE];
-                let sector = SECTOR_ALLOCATOR.lock().get_free_sector();
+                let sector = self.allocator.get_free_sector();
                 self.disk_manager.write(
                     zero.as_ptr(),
                     sector as u64,
@@ -224,11 +232,12 @@ impl FAtApi {
                 self.add_entry(FATEntry::new_used(sector)?)?;
                 Ok(self
                     .directory
-                    .add_entry(DirEntry::new(name, index as u16))?)
+                    .add_entry(DirEntry::new(name, index as u16, FILE_ENTRY_TYPE))?)
             }
             Ok(_) => Err(FileAlreadyExists),
         }
     }
+
 
     pub fn list_dir(&self) {
         self.directory.print()
@@ -240,34 +249,42 @@ impl FAtApi {
 
     pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
         let entry_index = self.index_by_name(name)?;
-        SECTOR_ALLOCATOR.lock().free(self.table.entries[entry_index as usize].get_sector()?);
+        self.allocator.free(self.table.entries[entry_index as usize].get_sector()?);
         self.table.remove_entry(entry_index)?;
         Ok(self.directory.remove_entry(name)) // cant failed cause teh index by name found that there is entry with the name
     }
+
+
 }
 
+const DIR_ENTRY_TYPE: u8 = 0x10;
+const FILE_ENTRY_TYPE: u8 = 0x05;
 #[derive(Debug, Clone, Copy)]
 #[repr(C)] // Ensures the struct layout is C-compatible (for binary data)
 pub struct DirEntry {
-    pub filename: [u8; 14], // 8 characters for the filename + 3 for the extension
+    pub filename: [u8; 13], // 8 characters for the filename + 3 for the extension
     pub first_cluster: u16, // 2 bytes for the first cluster
+    pub entry_type: u8,
 }
 
 impl DirEntry {
     // Create a new directory entry with a filename and first cluster
-    fn new(filename: &str, first_cluster: u16) -> Self {
-        let mut filename_bytes = [0u8; 14];
-        let len = filename.len().min(14);
+    fn new(filename: &str, first_cluster: u16, entry_type: u8) -> Self {
+        let mut filename_bytes = [0u8; 13];
+        let len = filename.len().min(13);
         filename_bytes[..len].copy_from_slice(&filename.as_bytes()[..len]);
         DirEntry {
             filename: filename_bytes,
             first_cluster,
+            entry_type
+
         }
     }
     fn empty() -> Self {
         DirEntry {
-            filename: [0u8; 14],
+            filename: [0u8; 13],
             first_cluster: 0,
+            entry_type: FILE_ENTRY_TYPE,
         }
     }
     fn to_string(&self) -> String {
@@ -325,15 +342,20 @@ impl Directory {
         }
         Err(OutOfSpace)
     }
-
+    const DIR_COLOR: Color = Color::new(40, 110, 190);
     fn print(&self) {
         for i in 0..self.entries.len() {
             if !self.entries[i].is_empty() {
+                if self.entries[i].entry_type == DIR_ENTRY_TYPE {
+                    change_writer_color(Self::DIR_COLOR);
+                }
                 println!(
                     "{}: {}",
                     self.entries[i].to_string(),
-                    self.entries[i].first_cluster
+                    self.entries[i].first_cluster,
+
                 );
+                change_writer_color(OUTPUT_COLOR);
             }
         }
     }
@@ -392,8 +414,8 @@ struct SectorAllocator
     next_free: u16,
     freed_sectors: Vec<u16>,
 }
-
 impl SectorAllocator {
+    const MAGIC_SECTOR_NUMBER: u16 = 0x22;
     pub const fn new() -> Self
     {
         SectorAllocator { next_free: FIRST_USABLE_SECTOR, freed_sectors: Vec::new() }
@@ -411,6 +433,80 @@ impl SectorAllocator {
     {
         self.freed_sectors.push(sector);
     }
+
+    fn save(&self, disk: &Disk) -> Result<(), FileSystemError>
+    {
+        let buff = self.to_bitmap();
+        disk.write(buff.as_ptr(), FIRST_USABLE_SECTOR as u64 - 2, 1)
+    }
+    fn to_bitmap(&self) -> [u8; SECTOR_SIZE] {
+        let mut buffer = [0u8; SECTOR_SIZE];
+
+        // Store self.next_free (a u16) in the first two bytes
+        buffer[0] =  (Self::MAGIC_SECTOR_NUMBER & 0xFF) as u8;
+        buffer[1] = ((Self::MAGIC_SECTOR_NUMBER >> 8) & 0xFF) as u8;
+        buffer[2] = (self.next_free & 0xFF) as u8;       // Lower byte
+        buffer[3] = ((self.next_free >> 8) & 0xFF) as u8; // Upper byte
+
+        // Store the freed_sectors data, treating each u16 as two bytes
+        for (i, sector) in self.freed_sectors.iter().enumerate() {
+            let offset = 4 + i * 2; // Each u16 takes 2 bytes
+
+            if offset + 1 >= SECTOR_SIZE {
+                break; // Prevent out-of-bounds writes
+            }
+
+            buffer[offset] = (sector & 0xFF) as u8;       // Lower byte
+            buffer[offset + 1] = ((sector >> 8) & 0xFFu16) as u8; // Upper byte
+        }
+        buffer
+    }
+    fn from_bitmap(buffer: [u8; SECTOR_SIZE]) -> Result<Self, FileSystemError>
+    {
+        let mut allocator = SectorAllocator::new();
+
+        if (buffer[1] as u16) << 8 | (buffer[0] as u16) != Self::MAGIC_SECTOR_NUMBER
+        {
+            return Err(FileSystemError::InvalidSectorAllocator)
+        }
+        // Restore self.next_free (stored in little-endian)
+        allocator.next_free = (buffer[3] as u16) << 8 | (buffer[2] as u16);
+
+        // Restore freed_sectors
+        for i in (4..SECTOR_SIZE).step_by(2) {
+            if i + 1 >= SECTOR_SIZE {
+                break; // Prevent out-of-bounds read
+            }
+
+            let sector = (buffer[i + 1] as u16) << 8 | (buffer[i] as u16); // Little-endian
+            if sector != 0 {
+                allocator.freed_sectors.push(sector);
+            }
+        }
+        Ok(allocator)
+    }
+    fn load(disk: &Disk) -> Result<Self, FileSystemError>
+    {
+        let mut tmp: [u8;512] = [0u8; SECTOR_SIZE];
+        disk.read(tmp.as_mut_ptr(), FIRST_USABLE_SECTOR as u64 - 2, 1)?;
+        Self::from_bitmap(tmp)
+    }
+
+    fn load_or_create(disk: &Disk) -> Self
+    {
+        match Self::load(disk)
+        {
+            Ok(allocator) => {
+                println!("sector allocator found and is valid!");
+                return allocator},
+            Err(FileSystemError::InvalidSectorAllocator) => {
+                println!("sector allocator found but is invalid!");
+                return SectorAllocator::new();
+            },
+            Err(e) => {
+                panic!("Error: {:?}", e);
+            }
+        }
+    }
 }
 
-pub static SECTOR_ALLOCATOR: Mutex<SectorAllocator> = Mutex::new(SectorAllocator::new());

@@ -7,7 +7,7 @@ use crate::file_system::disk_driver::SECTOR_SIZE;
 use crate::file_system::fat16::FAtApi;
 use crate::terminal::output::framebuffer::{Color, DEFAULT_COLOR};
 use crate::file_system::errors::FileSystemError;
-const OUTPUT_COLOR: Color = Color::new(255, 200, 35);
+pub const OUTPUT_COLOR: Color = Color::new(255, 200, 35);
 pub fn run(fs: &mut FAtApi) {
     print!(">>> ");
     let input = BUFFER.lock().get_input();
