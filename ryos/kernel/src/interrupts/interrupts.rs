@@ -105,13 +105,13 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
 extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame, _error_code: u64) -> !
 {
-    panic!("EXCEPTION: DOUBLE FAULT {}\n{:#?}", _error_code, stack_frame);
+    panic!("EXCEPTION: DOUBLE FAULT ");
 }
 extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame, error_code: x86_64::structures::idt::PageFaultErrorCode
 )
 {
 
-    eprintln!("error code {:?}", error_code);
+     eprintln!("error code {:?}", error_code);
     panic!("EXCEPTION: PAGE FAULT {:?}", stack_frame);
 }

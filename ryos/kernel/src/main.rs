@@ -5,9 +5,7 @@
 extern crate alloc;
 
 use crate::file_system::fat16::FAtApi;
-use alloc::boxed::Box;
 use bootloader_api::BootInfo;
-use core::arch::asm;
 use core::panic::PanicInfo;
 use embedded_graphics::Drawable;
 
@@ -18,6 +16,7 @@ use x86_64::VirtAddr;
 static BOOT_CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.mappings.physical_memory = Some(bootloader_api::config::Mapping::new_default());
+    config.kernel_stack_size = 130 * 1024;
     config
 };
 bootloader_api::entry_point!(kernel_main, config = &BOOT_CONFIG);

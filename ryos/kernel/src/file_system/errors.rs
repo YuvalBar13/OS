@@ -11,4 +11,6 @@ pub enum FileSystemError {
     FileAlreadyExists,
     InvalidDirectory,
     InvalidSectorAllocator,
+    DirAlreadyExists,
+    NotAFile,
 }

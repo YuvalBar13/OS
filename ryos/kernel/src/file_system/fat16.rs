@@ -1,11 +1,12 @@
 use crate::file_system::disk_driver::{Disk, SECTOR_SIZE};
 use crate::file_system::errors::FileSystemError;
 use crate::file_system::errors::FileSystemError::{
-    BadSector, FileAlreadyExists, FileNotFound, IndexOutOfBounds, OutOfSpace, UnusedSector,
+    BadSector, DirAlreadyExists, DirectoryNotFound, FileAlreadyExists, FileNotFound,
+    IndexOutOfBounds, OutOfSpace, UnusedSector,
 };
-use crate::terminal::interface::OUTPUT_COLOR;
+use crate::terminal::interface::{OUTPUT_COLOR, WORKING_DIR};
 use crate::terminal::output::framebuffer::{Color, DEFAULT_COLOR};
-use crate::{change_writer_color, print, println};
+use crate::{change_writer_color, eprintln, print, println};
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::ControlFlow::Break;
@@ -103,7 +104,9 @@ impl FAT {
             }
             Ok(_) => {
                 println!("FAT loaded but is invalid, creating a new one.");
-                FAT::new() // If FAT is invalid, create a new one
+                let mut fat = FAT::new(); // If FAT is invalid, create a new one
+                fat.save(disk_manager, None).expect("Error saving fat");
+                fat
             }
             Err(_) => {
                 println!("Error: Disk failed to load FAT.");
@@ -190,8 +193,7 @@ impl FAtApi {
     }
 
     pub fn save(&self) -> Result<(), FileSystemError> {
-        self.table.save(&self.disk_manager, None)?;
-        self.directory.save(&self.disk_manager, None)?;
+
         self.allocator.save(&self.disk_manager)
     }
 
@@ -206,22 +208,41 @@ impl FAtApi {
         Ok(self.table.entries[entry_index])
     }
 
-    pub fn get_data(&self, entry_index: usize) -> Result<[u8; SECTOR_SIZE], FileSystemError> {
+    pub fn get_data(&self, file_name: &str) -> Result<[u8; SECTOR_SIZE], FileSystemError> {
         let mut buffer: [u8; SECTOR_SIZE] = [0; SECTOR_SIZE];
+        let dir = self.get_current_directory()?;
+        let fat = self.get_current_fat(&dir.0)?;
+        let entry = dir.0.get_entry(file_name)?;
 
-        let sector = self.get_sector(entry_index)?;
-        self.disk_manager
-            .read(buffer.as_mut_ptr(), sector as u64, 1)?;
+        if entry.entry_type == DIR_ENTRY_TYPE {
+            return Err(FileSystemError::NotAFile);
+        }
+        self.disk_manager.read(
+            buffer.as_mut_ptr(),
+            fat.entries[entry.first_cluster as usize].get_sector()? as u64,
+            1,
+        )?;
         Ok(buffer)
     }
 
     pub fn change_data(
         &mut self,
-        entry_index: usize,
+        file_name: &str,
         buffer: &[u8; SECTOR_SIZE],
     ) -> Result<(), FileSystemError> {
-        let sector = self.get_sector(entry_index)?;
-        self.disk_manager.write(buffer.as_ptr(), sector as u64, 1)
+        let dir = self.get_current_directory()?;
+        let fat = self.get_current_fat(&dir.0)?;
+        let entry = dir.0.get_entry(file_name)?;
+        if entry.entry_type == DIR_ENTRY_TYPE {
+            return Err(FileSystemError::NotAFile);
+        }
+
+        self.disk_manager.write(
+            buffer.as_ptr(),
+            fat.entries[entry.first_cluster as usize].get_sector()? as u64,
+            1,
+        )?;
+        Ok(())
     }
     pub fn get_sector(&self, entry_index: usize) -> Result<u16, FileSystemError> {
         let entry = self.get_entry(entry_index)?;
@@ -246,71 +267,142 @@ impl FAtApi {
         }
     }
 
-    pub fn tmp(&mut self, name: &str) {
-        let entry = self.directory.get_entry(name).expect("TODO: panic message");
-        if entry.entry_type == DIR_ENTRY_TYPE {
-            let dir = Directory::load(&self.disk_manager, Some(entry.first_cluster))
-                .expect("TODO: panic message");
-            let mut fat =
-                FAT::load(&self.disk_manager, Some(dir.fat_sector)).expect("TODO: panic message");
-            let file_index = dir
-                .get_entry("tmp")
-                .expect("TODO: panic message")
-                .first_cluster;
-            println!("file index {}", file_index);
-            let sector = fat.entries[file_index as usize]
-                .get_sector()
-                .expect("TODO: panic message");
-            println!("data sector at tmp is {}", sector);
-            let mut buff: [u8; SECTOR_SIZE] = [0u8; SECTOR_SIZE];
-            self.disk_manager
-                .read(buff.as_mut_ptr(), sector as u64, 1)
-                .expect("TODO: panic message");
-            println!("file data ");
-           println!("{:?}")
+    /*
+    this function return the directory with the name 'name', the function will search for the directory at the 'directory' path
+     */
+    fn get_directory_table_by_name(
+        &self,
+        directory: &Directory,
+        name: &str,
+    ) -> Result<(Directory, u16), FileSystemError> {
+        let entry = directory.get_entry(name)?;
+        if entry.entry_type != DIR_ENTRY_TYPE {
+            return Err(DirectoryNotFound);
+        }
+        Ok((
+            Directory::load(&self.disk_manager, Some(entry.first_cluster))?,
+            entry.first_cluster,
+        ))
+    }
+
+    pub fn search_directory(&self, name: &str) -> Result<bool, FileSystemError> {
+        let dir = self.get_current_directory()?.0.get_entry(name);
+        match dir {
+            Ok(dir) =>
+                {
+                    if dir.entry_type == DIR_ENTRY_TYPE {
+                        Ok(true)
+                    } else {
+                        Ok(false)
+                    }
+                },
+            Err(FileSystemError::FileNotFound) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn get_current_directory(&self) -> Result<(Directory, u16), FileSystemError> {
+        let parts: Vec<String> = WORKING_DIR
+            .lock()
+            .split('/')
+            .map(String::from)
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let mut last_dir = (Directory::load(&self.disk_manager, None)?, FIRST_DIRECTORY);
+        for dir_name in parts {
+            last_dir = self.get_directory_table_by_name(&last_dir.0, dir_name.as_str())?;
+        }
+
+        Ok(last_dir)
+    }
+    fn get_current_fat(&self, directory: &Directory) -> Result<FAT, FileSystemError> {
+        FAT::load(&self.disk_manager, Some(directory.fat_sector))
+    }
+    fn get_parent_sector(&self) -> Result<u16, FileSystemError> {
+        let mut parts: Vec<String> = WORKING_DIR
+            .lock()
+            .split('/')
+            .map(String::from)
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if parts.len() == 0 {
+            return Ok(FIRST_USABLE_SECTOR - 1);
+        }
+        let current = parts.pop().unwrap(); // remove the current dir
+        let mut last_dir = self.directory;
+        for dir_name in parts {
+            last_dir = self
+                .get_directory_table_by_name(&last_dir, dir_name.as_str())?
+                .0;
+        }
+        Ok(last_dir.get_entry(current.as_str())?.first_cluster)
+    }
+    pub fn add_file(&mut self, name: &str) -> Result<(), FileSystemError> {
+        let mut dir = self.get_current_directory()?;
+        match dir.0.get_entry(name) {
+            Err(_) => {
+                let mut fat = self.get_current_fat(&dir.0)?;
+
+                let index = fat.first_free_entry()?;
+
+                let zero = [0u8; SECTOR_SIZE];
+                let sector = self.allocator.get_free_sector();
+                self.allocator.save(&self.disk_manager)?;
+                self.disk_manager.write(zero.as_ptr(), sector as u64, 1)?;
+
+                fat.add_entry(FATEntry::new_used(sector)?)?;
+
+                dir
+                    .0
+                    .add_entry(DirEntry::new(name, index as u16, FILE_ENTRY_TYPE))?;
+
+                fat.save(&self.disk_manager, Some(dir.0.fat_sector))?;
+                dir.0.save(&self.disk_manager, Some(dir.1))?;
+                Ok(())
+            }
+            Ok(_) => Err(FileAlreadyExists),
         }
     }
 
     // this function creates new dir and making a sub dirs of '.' and '..'
     pub fn new_dir(&mut self, name: &str) -> Result<(), FileSystemError> {
+        if self.get_current_directory()?.0.get_entry(name).is_ok() {
+            return Err(DirAlreadyExists);
+        }
+
         let fat_sector = self.allocator.get_free_sectors(9);
+        self.allocator.save(&self.disk_manager)?;
         let mut fat = FAT::new();
 
         let dir_sector = fat_sector + 1;
         let mut dir = Directory::new(fat_sector);
-
+        dir.fat_sector = fat_sector;
         dir.add_entry(DirEntry::new(".", dir_sector, DIR_ENTRY_TYPE))
             .expect("TODO: panic message");
-        dir.add_entry(DirEntry::new("..", dir_sector, DIR_ENTRY_TYPE))
-            .expect("TODO: panic message"); // dir sector should be replaced with parent dir entry which is get as parm or something like this
         dir.add_entry(DirEntry::new(
-            "tmp",
-            fat.first_free_entry()? as u16,
-            FILE_ENTRY_TYPE,
+            "..",
+            self.get_parent_sector()?,
+            DIR_ENTRY_TYPE,
         ))
         .expect("TODO: panic message");
 
-        let data_sector = self.allocator.get_free_sector();
-        let test: [u8; SECTOR_SIZE] = [2u8; SECTOR_SIZE];
-        println!("data sector is {}", data_sector);
-        self.disk_manager
-            .write(test.as_ptr(), data_sector as u64, 1)
-            .expect("TODO: panic message");
-        fat.add_entry(FATEntry::new_used(data_sector).expect("TODO: panic message"))?;
-        println!("{}", fat.entries[1].get_sector().unwrap());
         fat.save(&self.disk_manager, Some(fat_sector))
             .expect("TODO: panic message");
 
         dir.save(&self.disk_manager, Some(dir_sector))
             .expect("TODO: panic message");
-        self.directory
+        let mut parent = self.get_current_directory()?;
+        parent
+            .0
             .add_entry(DirEntry::new(name, dir_sector, DIR_ENTRY_TYPE))
             .expect("TODO: panic message");
-        Ok(())
+        parent.0.save(&self.disk_manager, Some(parent.1))
     }
 
     pub fn list_dir(&self) {
-        self.directory.print()
+        self.get_current_directory().unwrap().0.print();
     }
 
     pub fn index_by_name(&self, name: &str) -> Result<u16, FileSystemError> {
@@ -321,6 +413,7 @@ impl FAtApi {
         let entry_index = self.index_by_name(name)?;
         self.allocator
             .free(self.table.entries[entry_index as usize].get_sector()?);
+
         self.table.remove_entry(entry_index)?;
         Ok(self.directory.remove_entry(name)) // cant failed cause teh index by name found that there is entry with the name
     }
@@ -394,10 +487,8 @@ impl Directory {
             }
             Err(FileSystemError::InvalidDirectory) => {
                 println!("Directory loaded but is invalid, creating a new one");
-                let new_dir = Directory::new(FIRST_USABLE_SECTOR - 1);
-                new_dir
-                    .save(disk_manager, None)
-                    .expect("Failed to save new directory");
+                let mut new_dir = Directory::new(FIRST_DIRECTORY);
+                new_dir.save(disk_manager, None).expect("Error saving to disk");
                 new_dir
             }
             Err(_) => panic!("Failed to read directory"),
@@ -422,7 +513,7 @@ impl Directory {
                 println!(
                     "{}: {}",
                     self.entries[i].to_string(),
-                    self.entries[i].first_cluster,
+                    self.entries[i].first_cluster
                 );
                 change_writer_color(OUTPUT_COLOR);
             }
@@ -436,27 +527,36 @@ impl Directory {
                 core::mem::size_of::<Directory>(),
             )
         };
-        if sector.is_none() {
-            return disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 8);
-        }
 
-        disk_manager.write(bytes.as_ptr(), sector.unwrap() as u64, 8)
+        if sector.is_none() {
+
+            return disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 8)
+        }
+        else {
+            disk_manager.write(bytes.as_ptr(), sector.unwrap() as u64, 8)
+
+        }
     }
 
     fn load(disk_manager: &Disk, sector: Option<u16>) -> Result<Directory, FileSystemError> {
         let mut buffer = [0u8; core::mem::size_of::<Directory>()];
         if sector.is_none() {
+
             disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 8)?;
         } else {
+
             disk_manager.read(buffer.as_mut_ptr(), sector.unwrap() as u64, 8)?;
         }
-        let directory = unsafe { core::ptr::read(buffer.as_ptr() as *const Directory) };
+        let mut directory = unsafe { core::ptr::read(buffer.as_ptr() as *const Directory) };
 
         // Validate magic number
         if directory.magic != DIRECTORY_MAGIC {
             return Err(FileSystemError::InvalidDirectory);
         }
-
+        if sector.is_none()
+        {
+            directory.fat_sector = FIRST_USABLE_SECTOR -1;
+        }
         Ok(directory)
     }
 
@@ -571,7 +671,9 @@ impl SectorAllocator {
             }
             Err(FileSystemError::InvalidSectorAllocator) => {
                 println!("sector allocator found but is invalid!");
-                return SectorAllocator::new();
+                let allocator = SectorAllocator::new();
+                allocator.save(disk).expect("Error saving to disk");
+                return allocator;
             }
             Err(e) => {
                 panic!("Error: {:?}", e);

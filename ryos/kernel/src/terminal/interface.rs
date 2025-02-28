@@ -1,20 +1,21 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use core::fmt::Error;
-use crate::terminal::input::buffer::BUFFER;
-use crate::{change_writer_color, eprintln, print, print_logo, println};
 use crate::file_system::disk_driver::SECTOR_SIZE;
 use crate::file_system::fat16::FAtApi;
+use crate::terminal::input::buffer::BUFFER;
 use crate::terminal::output::framebuffer::{Color, DEFAULT_COLOR};
-use crate::file_system::errors::FileSystemError;
+use crate::{change_writer_color, eprintln, print, print_logo, println};
+use alloc::string::{String};
+use alloc::vec::Vec;
+use spin::Mutex;
+use spin::lazy::Lazy;
 pub const OUTPUT_COLOR: Color = Color::new(255, 200, 35);
+pub static WORKING_DIR: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::from("/")));
 pub fn run(fs: &mut FAtApi) {
     print!(">>> ");
     let input = BUFFER.lock().get_input();
     println!();
     handle_command(input.as_str(), fs);
+    fs.save().unwrap();
 }
-
 
 pub fn handle_command(command: &str, fs: &mut FAtApi) {
     let parts: Vec<&str> = command.splitn(3, ' ').filter(|s| !s.is_empty()).collect();
@@ -38,21 +39,31 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
         "cat" => {
             if let Some(name) = parts.get(1) {
                 cat(name, fs);
-            } else { eprintln!("Usage: cat [name]") }
+            } else {
+                eprintln!("Usage: cat [name]")
+            }
         }
         "write" => {
             if let Some(name) = parts.get(1) {
                 if let Some(buffer) = parts.get(2) {
                     write(name, to_buffer(buffer), fs);
-                } else { eprintln!("Usage: write [name] [buffer]") }
-            } else { eprintln!("Usage: write [name] [buffer]") }
+                } else {
+                    eprintln!("Usage: write [name] [buffer]")
+                }
+            } else {
+                eprintln!("Usage: write [name] [buffer]")
+            }
         }
         "append" => {
             if let Some(name) = parts.get(1) {
                 if let Some(buffer) = parts.get(2) {
                     append_data(name, to_buffer(buffer), fs);
-                } else { eprintln!("Usage: append [name] [buffer]") }
-            } else { eprintln!("Usage: append [name] [buffer]") }
+                } else {
+                    eprintln!("Usage: append [name] [buffer]")
+                }
+            } else {
+                eprintln!("Usage: append [name] [buffer]")
+            }
         }
         "ls" => {
             ls(fs);
@@ -60,18 +71,31 @@ pub fn handle_command(command: &str, fs: &mut FAtApi) {
         "touch" => {
             if let Some(name) = parts.get(1) {
                 touch(name, fs);
-            } else { eprintln!("Usage: touch [name]") }
-        }
-        "mkdir" =>
-            {
-                if let Some(name) = parts.get(1) {
-                    mkdir(name, fs);
-                } else { eprintln!("mkdir: touch [name]") }
+            } else {
+                eprintln!("Usage: touch [name]")
             }
+
+        }
+        "mkdir" => {
+            if let Some(name) = parts.get(1) {
+                mkdir(name, fs);
+            } else {
+                eprintln!("mkdir: touch [name]")
+            }
+        }
         "rm" => {
             if let Some(name) = parts.get(1) {
                 rm(name, fs);
-            } else { eprintln!("Usage: rm [name]") }
+            } else {
+                eprintln!("Usage: rm [name]")
+            }
+        }
+        "cd" => {
+            if let Some(parm) = parts.get(1) {
+                cd(parm, fs);
+            } else {
+                eprintln!("Usage: cd [path]")
+            }
         }
         "multitasking" => {
             crate::test_multitasking();
@@ -113,11 +137,14 @@ fn reboot() {
 }
 fn cat(name: &str, fs: &FAtApi) {
     let data = get_file_data(name, fs);
-    if data.is_none() { return; }
+    if data.is_none() {
+        return;
+    }
     let data = data.unwrap();
     for i in 0..SECTOR_SIZE {
         if data[i] == 0 {
-            if i != 0 // in case that the file isn't empty but isn't full print a new line at the end
+            if i != 0
+            // in case that the file isn't empty but isn't full print a new line at the end
             {
                 println!();
             }
@@ -128,44 +155,19 @@ fn cat(name: &str, fs: &FAtApi) {
     println!(); // new line
 }
 
-fn get_file_data(name: &str, fs: &FAtApi) -> Option<[u8; SECTOR_SIZE]>
-{
-    match fs.index_by_name(name) {
-        Ok(index) => {
-            return match fs.get_data(index as usize) {
-                Ok(data) => {
-                    Some(data)
-                }
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
-                    None
-                }
-            }
-        }
+fn get_file_data(name: &str, fs: &FAtApi) -> Option<[u8; SECTOR_SIZE]> {
+    match fs.get_data(name) {
+        Ok(data) => Some(data),
         Err(e) => {
             eprintln!("Error: {:?}", e);
-            return None;
+            None
         }
     }
 }
 fn write(name: &str, buffer: [u8; SECTOR_SIZE], fs: &mut FAtApi) {
-    match fs.index_by_name(name)
-    {
-        Ok(index) => {
-            fs.change_data(index as usize, &buffer).expect("Error writing to disk");
-            match fs.save()
-            {
-                Ok(_) => {}
-                Err(e) => eprintln!("Error saving disk: {:?}", e)
-            }
-        }
-        Err(FileSystemError::FileNotFound) =>
-            {
-                eprintln!("File {} not found!", name);
-            }
-        Err(e) => {
-            eprintln!("Error adding entry to disk {:?}", e);
-        }
+    match fs.change_data(name, &buffer) {
+        Ok(_) => {}
+        Err(e) => eprintln!("Error {:?}", e),
     }
 }
 fn help() {
@@ -191,61 +193,89 @@ fn to_buffer(str: &str) -> [u8; SECTOR_SIZE] {
     buffer
 }
 
-fn ls(fs: &FAtApi)
-{
+fn ls(fs: &FAtApi) {
     fs.list_dir();
 }
 
-fn touch(name: &str, fs: &mut FAtApi)
-{
-    match fs.new_entry(name) {
-        Ok(_) => {
-            match fs.save()
-            {
-                Ok(_) => {}
-                Err(e) => eprintln!("Error saving disk: {:?}", e)
-            }
-        }
-        Err(e) => {
-            eprintln!("Error adding entry to disk {:?}", e);
-        }
+fn touch(name: &str, fs: &mut FAtApi) {
+    match fs.add_file(name)
+    {
+        Ok(_) => {},
+        Err(e) => eprintln!("Error adding file {:?}", e)
     }
 }
 
-fn rm(name: &str, fs: &mut FAtApi)
-{
+fn rm(name: &str, fs: &mut FAtApi) {
     match fs.remove_entry(name) {
-        Ok(_) => {
-            match fs.save()
-            {
-                Ok(_) => {}
-                Err(e) => eprintln!("Error: {:?}", e)
-            }
-        }
+        Ok(_) => match fs.save() {
+            Ok(_) => {}
+            Err(e) => eprintln!("Error: {:?}", e),
+        },
         Err(e) => {
             eprintln!("Error {:?}", e);
         }
     }
 }
 
-fn append_data(name: &str, new_data: [u8; SECTOR_SIZE], fs: &mut FAtApi)
-{
+fn append_data(name: &str, new_data: [u8; SECTOR_SIZE], fs: &mut FAtApi) {
     let data = get_file_data(name, fs);
-    if data.is_none() { return; }
+    if data.is_none() {
+        return;
+    }
     let mut data = data.unwrap();
     let mut new_data_index = 0;
-    for i in 0..SECTOR_SIZE
-    {
-        if data[i] == 0
-        {
+    for i in 0..SECTOR_SIZE {
+        if data[i] == 0 {
             data[i] = new_data[new_data_index];
             new_data_index += 1;
         }
     }
     write(name, data, fs);
 }
-fn mkdir(name: &str, fs: &mut FAtApi)
+fn mkdir(name: &str, fs: &mut FAtApi) {
+    match fs.new_dir(name)
+    {
+        Ok(_) => {},
+        Err(e) => eprintln!("Error adding dir {:?}", e)
+    }
+}
+
+fn cd(parm: &str, fs: &FAtApi) {
+    if parm == ".." {
+       remove_last_path();
+    }
+    else {
+        add_path(fs, parm);
+    }
+    println!("working dir {}", WORKING_DIR.lock());
+}
+fn remove_last_path() {
+    let mut dir = WORKING_DIR.lock();
+    dir.pop();
+    if let Some(pos) = dir.rfind('/') {
+        if pos == 0 {
+            // Keep at least the root `/`
+            dir.truncate(1);
+        } else {
+            dir.truncate(pos+ 1);
+        }
+    }
+}
+
+fn add_path(fs: &FAtApi, dir_name: &str)
 {
-    fs.new_dir(name).unwrap();
-    fs.tmp(name);
+    match fs.search_directory(dir_name)
+    {
+        Err(e) => eprintln!("Error searching directory: {:?}", e),
+        Ok(found) => {
+            if !found
+            {
+                eprintln!("Error directory not found!");
+                return;
+            }
+            *WORKING_DIR.lock() += dir_name ;
+            *WORKING_DIR.lock() += "/";
+
+        }
+    }
 }
