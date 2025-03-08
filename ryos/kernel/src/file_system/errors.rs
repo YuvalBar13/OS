@@ -13,4 +13,5 @@ pub enum FileSystemError {
     InvalidSectorAllocator,
     DirAlreadyExists,
     NotAFile,
+    NotADirectory,
 }

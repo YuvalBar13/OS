@@ -206,14 +206,10 @@ fn touch(name: &str, fs: &mut FAtApi) {
 }
 
 fn rm(name: &str, fs: &mut FAtApi) {
-    match fs.remove_entry(name) {
-        Ok(_) => match fs.save() {
-            Ok(_) => {}
-            Err(e) => eprintln!("Error: {:?}", e),
-        },
-        Err(e) => {
-            eprintln!("Error {:?}", e);
-        }
+    match fs.remove_entry(name)
+    {
+        Ok(_) => {},
+        Err(e) => eprintln!("Error removing file {:?}", e)
     }
 }
 

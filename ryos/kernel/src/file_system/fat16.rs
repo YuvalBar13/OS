@@ -409,13 +409,71 @@ impl FAtApi {
         Ok(self.directory.get_entry(name)?.first_cluster)
     }
 
-    pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
-        let entry_index = self.index_by_name(name)?;
-        self.allocator
-            .free(self.table.entries[entry_index as usize].get_sector()?);
+    fn remove_file_by_name(&mut self, name: &str, directory: &mut (Directory, u16)) -> Result<(), FileSystemError> {
+        let mut entry = directory.0.get_entry(name)?;
+        if entry.entry_type == FILE_ENTRY_TYPE
+        {
+            let fat_index = entry.first_cluster;
+            let mut fat = self.get_current_fat(&directory.0)?;
+            let fat_entry = fat.entries[fat_index as usize];
+            self.allocator.free(fat_entry.get_sector()?);
+            fat.remove_entry(fat_index)?;
+            fat.save(&self.disk_manager, Some(directory.0.fat_sector))?;
+            directory.0.remove_entry(name);
+            directory.0.save(&self.disk_manager, Some(directory.1))?;
+            Ok(())
+        }
+        else {
+            Err(FileSystemError::NotAFile)
+        }
+    }
+    fn remove_dir_by_name(&mut self, name: &str, directory: &mut (Directory, u16)) -> Result<(), FileSystemError> {
+        println!("removing dir");
+        let mut entry_index: usize = 0;
+        for (index, entry) in directory.0.entries.iter_mut().enumerate() {
+            if entry.to_string() == name {
+                entry_index = index;
+                break;
+            }
+        }
+        if directory.0.entries[entry_index].entry_type == DIR_ENTRY_TYPE
+        {
+            let mut dir = self.get_directory_table_by_name(&directory.0, name)?;
+            let mut fat = self.get_current_fat(&dir.0)?;
+            for fat_entry in &mut fat.entries
+            {
+                if fat_entry.is_used()
+                {
+                    self.allocator.free(fat_entry.get_sector()?);
+                    *fat_entry = FATEntry::new_free();
+                }
+            }
+            fat.entries[0] = FATEntry::new_free();
+            fat.save(&self.disk_manager, Some(dir.0.fat_sector))?;
+            self.allocator.free(dir.0.fat_sector);
+            dir.0.magic = 0;
+            dir.0.save(&self.disk_manager, Some(dir.1))?;
+            println!("{}", dir.1);
 
-        self.table.remove_entry(entry_index)?;
-        Ok(self.directory.remove_entry(name)) // cant failed cause teh index by name found that there is entry with the name
+
+            directory.0.entries[entry_index] = DirEntry::empty();
+            directory.0.save(&self.disk_manager, Some(directory.1))?;
+            self.allocator.free_directory(dir.1);
+
+            Ok(())
+        }
+        else {
+            Err(FileSystemError::NotADirectory)
+        }
+    }
+    pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
+        let mut curr_dir = self.get_current_directory()?;
+        return match self.remove_file_by_name(name, &mut curr_dir) {
+            Ok(_) => Ok(()),
+            Err(FileSystemError::NotAFile) => self.remove_dir_by_name(name, &mut curr_dir),
+            Err(e) => Err(e),
+        }
+
     }
 }
 
@@ -478,6 +536,9 @@ impl Directory {
             entries: [DirEntry::empty(); ENTRY_COUNT * 8 - 3],
             fat_sector,
         }
+    }
+    fn get_entries(&self) -> &[DirEntry] {
+        &self.entries
     }
     pub fn load_or_create_dir(disk_manager: &Disk) -> Directory {
         match Directory::load(&disk_manager, None) {
@@ -608,7 +669,16 @@ impl SectorAllocator {
     pub fn free(&mut self, sector: u16) {
         self.freed_sectors.push(sector);
     }
+    fn free_directory(&mut self, sector: u16)
+    {
+        let last = self.freed_sectors.len();
+        for offset in 0..8
+        {
+            self.freed_sectors.push(sector + offset);
+            print!("{} ", self.freed_sectors[last - 1 + offset as usize]);
 
+        }
+    }
     fn save(&self, disk: &Disk) -> Result<(), FileSystemError> {
         let buff = self.to_bitmap();
         disk.write(buff.as_ptr(), FIRST_USABLE_SECTOR as u64 - 2, 1)
