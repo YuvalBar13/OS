@@ -328,10 +328,10 @@ impl FAtApi {
             .collect();
 
         if parts.len() == 0 {
-            return Ok(FIRST_USABLE_SECTOR - 1);
+            return Ok( FIRST_DIRECTORY);
         }
         let current = parts.pop().unwrap(); // remove the current dir
-        let mut last_dir = self.directory;
+        let mut last_dir = (Directory::load(&self.disk_manager, None)?, FIRST_DIRECTORY).0;
         for dir_name in parts {
             last_dir = self
                 .get_directory_table_by_name(&last_dir, dir_name.as_str())?
@@ -371,33 +371,30 @@ impl FAtApi {
         if self.get_current_directory()?.0.get_entry(name).is_ok() {
             return Err(DirAlreadyExists);
         }
-
+        println!("is ok");
+        println!("1");
         let fat_sector = self.allocator.get_free_sectors(9);
         self.allocator.save(&self.disk_manager)?;
+        println!("1");
         let mut fat = FAT::new();
 
         let dir_sector = fat_sector + 1;
         let mut dir = Directory::new(fat_sector);
         dir.fat_sector = fat_sector;
-        dir.add_entry(DirEntry::new(".", dir_sector, DIR_ENTRY_TYPE))
-            .expect("TODO: panic message");
+        dir.add_entry(DirEntry::new(".", dir_sector, DIR_ENTRY_TYPE))?;
         dir.add_entry(DirEntry::new(
             "..",
             self.get_parent_sector()?,
             DIR_ENTRY_TYPE,
-        ))
-        .expect("TODO: panic message");
+        ))?;
 
-        fat.save(&self.disk_manager, Some(fat_sector))
-            .expect("TODO: panic message");
+        fat.save(&self.disk_manager, Some(fat_sector))?;
 
-        dir.save(&self.disk_manager, Some(dir_sector))
-            .expect("TODO: panic message");
+        dir.save(&self.disk_manager, Some(dir_sector))?;
         let mut parent = self.get_current_directory()?;
         parent
             .0
-            .add_entry(DirEntry::new(name, dir_sector, DIR_ENTRY_TYPE))
-            .expect("TODO: panic message");
+            .add_entry(DirEntry::new(name, dir_sector, DIR_ENTRY_TYPE))?;
         parent.0.save(&self.disk_manager, Some(parent.1))
     }
 
@@ -428,7 +425,6 @@ impl FAtApi {
         }
     }
     fn remove_dir_by_name(&mut self, name: &str, directory: &mut (Directory, u16)) -> Result<(), FileSystemError> {
-        println!("removing dir");
         let mut entry_index: usize = 0;
         for (index, entry) in directory.0.entries.iter_mut().enumerate() {
             if entry.to_string() == name {
@@ -436,9 +432,11 @@ impl FAtApi {
                 break;
             }
         }
-        if directory.0.entries[entry_index].entry_type == DIR_ENTRY_TYPE
+        if !directory.0.entries[entry_index].entry_type == DIR_ENTRY_TYPE
         {
-            let mut dir = self.get_directory_table_by_name(&directory.0, name)?;
+            return Err(FileSystemError::NotADirectory)
+        }
+        let mut dir = self.get_directory_table_by_name(&directory.0, name)?;
             let mut fat = self.get_current_fat(&dir.0)?;
             for fat_entry in &mut fat.entries
             {
@@ -455,16 +453,13 @@ impl FAtApi {
             dir.0.save(&self.disk_manager, Some(dir.1))?;
             println!("{}", dir.1);
 
-
             directory.0.entries[entry_index] = DirEntry::empty();
             directory.0.save(&self.disk_manager, Some(directory.1))?;
             self.allocator.free_directory(dir.1);
 
             Ok(())
-        }
-        else {
-            Err(FileSystemError::NotADirectory)
-        }
+
+
     }
     pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
         let mut curr_dir = self.get_current_directory()?;
