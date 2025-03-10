@@ -193,7 +193,6 @@ impl FAtApi {
     }
 
     pub fn save(&self) -> Result<(), FileSystemError> {
-
         self.allocator.save(&self.disk_manager)
     }
 
@@ -288,14 +287,13 @@ impl FAtApi {
     pub fn search_directory(&self, name: &str) -> Result<bool, FileSystemError> {
         let dir = self.get_current_directory()?.0.get_entry(name);
         match dir {
-            Ok(dir) =>
-                {
-                    if dir.entry_type == DIR_ENTRY_TYPE {
-                        Ok(true)
-                    } else {
-                        Ok(false)
-                    }
-                },
+            Ok(dir) => {
+                if dir.entry_type == DIR_ENTRY_TYPE {
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
             Err(FileSystemError::FileNotFound) => Ok(false),
             Err(e) => Err(e),
         }
@@ -328,7 +326,7 @@ impl FAtApi {
             .collect();
 
         if parts.len() == 0 {
-            return Ok( FIRST_DIRECTORY);
+            return Ok(FIRST_DIRECTORY);
         }
         let current = parts.pop().unwrap(); // remove the current dir
         let mut last_dir = (Directory::load(&self.disk_manager, None)?, FIRST_DIRECTORY).0;
@@ -354,8 +352,7 @@ impl FAtApi {
 
                 fat.add_entry(FATEntry::new_used(sector)?)?;
 
-                dir
-                    .0
+                dir.0
                     .add_entry(DirEntry::new(name, index as u16, FILE_ENTRY_TYPE))?;
 
                 fat.save(&self.disk_manager, Some(dir.0.fat_sector))?;
@@ -371,11 +368,8 @@ impl FAtApi {
         if self.get_current_directory()?.0.get_entry(name).is_ok() {
             return Err(DirAlreadyExists);
         }
-        println!("is ok");
-        println!("1");
         let fat_sector = self.allocator.get_free_sectors(9);
         self.allocator.save(&self.disk_manager)?;
-        println!("1");
         let mut fat = FAT::new();
 
         let dir_sector = fat_sector + 1;
@@ -406,10 +400,13 @@ impl FAtApi {
         Ok(self.directory.get_entry(name)?.first_cluster)
     }
 
-    fn remove_file_by_name(&mut self, name: &str, directory: &mut (Directory, u16)) -> Result<(), FileSystemError> {
+    fn remove_file_by_name(
+        &mut self,
+        name: &str,
+        directory: &mut (Directory, u16),
+    ) -> Result<(), FileSystemError> {
         let mut entry = directory.0.get_entry(name)?;
-        if entry.entry_type == FILE_ENTRY_TYPE
-        {
+        if entry.entry_type == FILE_ENTRY_TYPE {
             let fat_index = entry.first_cluster;
             let mut fat = self.get_current_fat(&directory.0)?;
             let fat_entry = fat.entries[fat_index as usize];
@@ -419,12 +416,16 @@ impl FAtApi {
             directory.0.remove_entry(name);
             directory.0.save(&self.disk_manager, Some(directory.1))?;
             Ok(())
-        }
-        else {
+        } else {
             Err(FileSystemError::NotAFile)
         }
     }
-    fn remove_dir_by_name(&mut self, name: &str, directory: &mut (Directory, u16)) -> Result<(), FileSystemError> {
+    fn remove_dir_by_name(
+        &mut self,
+        name: &str,
+        directory: &mut (Directory, u16),
+    ) -> Result<(), FileSystemError> {
+        println!("test");
         let mut entry_index: usize = 0;
         for (index, entry) in directory.0.entries.iter_mut().enumerate() {
             if entry.to_string() == name {
@@ -432,34 +433,32 @@ impl FAtApi {
                 break;
             }
         }
-        if !directory.0.entries[entry_index].entry_type == DIR_ENTRY_TYPE
-        {
-            return Err(FileSystemError::NotADirectory)
+        if !directory.0.entries[entry_index].entry_type == DIR_ENTRY_TYPE {
+            return Err(FileSystemError::NotADirectory);
         }
         let mut dir = self.get_directory_table_by_name(&directory.0, name)?;
-            let mut fat = self.get_current_fat(&dir.0)?;
-            for fat_entry in &mut fat.entries
-            {
-                if fat_entry.is_used()
-                {
-                    self.allocator.free(fat_entry.get_sector()?);
-                    *fat_entry = FATEntry::new_free();
-                }
+        let mut fat = self.get_current_fat(&dir.0)?;
+        for fat_entry in &mut fat.entries {
+            if fat_entry.is_used() {
+                self.allocator.free(fat_entry.get_sector()?);
+                *fat_entry = FATEntry::new_free();
             }
-            fat.entries[0] = FATEntry::new_free();
-            fat.save(&self.disk_manager, Some(dir.0.fat_sector))?;
-            self.allocator.free(dir.0.fat_sector);
-            dir.0.magic = 0;
-            dir.0.save(&self.disk_manager, Some(dir.1))?;
-            println!("{}", dir.1);
+        }
+        for entry in dir.0.entries {
+            if entry.entry_type == DIR_ENTRY_TYPE && entry.to_string() != "." && entry.to_string() != ".." {
+                self.remove_dir_by_name(&entry.to_string(), &mut dir)?
+            }
+        }
+        fat.entries[0] = FATEntry::new_free();
+        fat.save(&self.disk_manager, Some(dir.0.fat_sector))?;
+        self.allocator.free(dir.0.fat_sector);
+        dir.0.magic = 0;
+        dir.0.save(&self.disk_manager, Some(dir.1))?;
+        directory.0.entries[entry_index] = DirEntry::empty();
+        directory.0.save(&self.disk_manager, Some(directory.1))?;
+        self.allocator.free_directory(dir.1);
 
-            directory.0.entries[entry_index] = DirEntry::empty();
-            directory.0.save(&self.disk_manager, Some(directory.1))?;
-            self.allocator.free_directory(dir.1);
-
-            Ok(())
-
-
+        Ok(())
     }
     pub fn remove_entry(&mut self, name: &str) -> Result<(), FileSystemError> {
         let mut curr_dir = self.get_current_directory()?;
@@ -467,8 +466,7 @@ impl FAtApi {
             Ok(_) => Ok(()),
             Err(FileSystemError::NotAFile) => self.remove_dir_by_name(name, &mut curr_dir),
             Err(e) => Err(e),
-        }
-
+        };
     }
 }
 
@@ -544,7 +542,9 @@ impl Directory {
             Err(FileSystemError::InvalidDirectory) => {
                 println!("Directory loaded but is invalid, creating a new one");
                 let mut new_dir = Directory::new(FIRST_DIRECTORY);
-                new_dir.save(disk_manager, None).expect("Error saving to disk");
+                new_dir
+                    .save(disk_manager, None)
+                    .expect("Error saving to disk");
                 new_dir
             }
             Err(_) => panic!("Failed to read directory"),
@@ -585,22 +585,17 @@ impl Directory {
         };
 
         if sector.is_none() {
-
-            return disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 8)
-        }
-        else {
+            return disk_manager.write(bytes.as_ptr(), FIRST_DIRECTORY as u64, 8);
+        } else {
             disk_manager.write(bytes.as_ptr(), sector.unwrap() as u64, 8)
-
         }
     }
 
     fn load(disk_manager: &Disk, sector: Option<u16>) -> Result<Directory, FileSystemError> {
         let mut buffer = [0u8; core::mem::size_of::<Directory>()];
         if sector.is_none() {
-
             disk_manager.read(buffer.as_mut_ptr(), FIRST_DIRECTORY as u64, 8)?;
         } else {
-
             disk_manager.read(buffer.as_mut_ptr(), sector.unwrap() as u64, 8)?;
         }
         let mut directory = unsafe { core::ptr::read(buffer.as_ptr() as *const Directory) };
@@ -609,9 +604,8 @@ impl Directory {
         if directory.magic != DIRECTORY_MAGIC {
             return Err(FileSystemError::InvalidDirectory);
         }
-        if sector.is_none()
-        {
-            directory.fat_sector = FIRST_USABLE_SECTOR -1;
+        if sector.is_none() {
+            directory.fat_sector = FIRST_USABLE_SECTOR - 1;
         }
         Ok(directory)
     }
@@ -664,14 +658,10 @@ impl SectorAllocator {
     pub fn free(&mut self, sector: u16) {
         self.freed_sectors.push(sector);
     }
-    fn free_directory(&mut self, sector: u16)
-    {
+    fn free_directory(&mut self, sector: u16) {
         let last = self.freed_sectors.len();
-        for offset in 0..8
-        {
+        for offset in 0..8 {
             self.freed_sectors.push(sector + offset);
-            print!("{} ", self.freed_sectors[last - 1 + offset as usize]);
-
         }
     }
     fn save(&self, disk: &Disk) -> Result<(), FileSystemError> {

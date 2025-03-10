@@ -10,7 +10,7 @@ use spin::lazy::Lazy;
 pub const OUTPUT_COLOR: Color = Color::new(255, 200, 35);
 pub static WORKING_DIR: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::from("/")));
 pub fn run(fs: &mut FAtApi) {
-    print!(">>> ");
+    print!("{}> ", WORKING_DIR.lock());
     let input = BUFFER.lock().get_input();
     println!();
     handle_command(input.as_str(), fs);
@@ -243,7 +243,6 @@ fn cd(parm: &str, fs: &FAtApi) {
     else {
         add_path(fs, parm);
     }
-    println!("working dir {}", WORKING_DIR.lock());
 }
 fn remove_last_path() {
     let mut dir = WORKING_DIR.lock();
