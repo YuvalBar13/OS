@@ -42,9 +42,10 @@ fn kernel_main(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     init(boot_info);
     println!("\n\nreal main");
 
-    let mut fat = FAtApi::new();
+    let fat = FAtApi::new();
+    let mut terminal = terminal::interface::Terminal::new(fat);
     loop {
-        terminal::interface::run(&mut fat);
+        terminal.run();
         x86_64::instructions::hlt();
     }
 }
