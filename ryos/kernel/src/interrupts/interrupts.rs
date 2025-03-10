@@ -91,7 +91,11 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
                 DecodedKey::Unicode(character) => x86_64::instructions::interrupts::without_interrupts(|| {BUFFER.lock().add_char(character);}),
-                DecodedKey::RawKey(key) => println!("{:?}", key),
+                DecodedKey::RawKey(key) => {
+                    if key == pc_keyboard::KeyCode::ArrowUp {
+                        x86_64::instructions::interrupts::without_interrupts(||{BUFFER.lock().arrow_up()});
+                    }
+                },
             }
         }
     }
