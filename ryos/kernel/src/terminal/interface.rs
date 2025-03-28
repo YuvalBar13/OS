@@ -36,8 +36,8 @@ impl Terminal
             "shutdown" => Self::shutdown(),
             "reboot" => Self::reboot(),
             "echo" => {
-                if let Some(arg) = parts.get(1) {
-                    Self::echo(arg);
+                if let Some(arg) = parts.get(1..) {
+                    Self::echo(arg.join(" ").as_str());
                 } else {
                     println!("Usage: echo [text]");
                 }
@@ -195,6 +195,7 @@ impl Terminal
         println!("rm - remove file");
         println!("multitasking - test multitasking");
         println!("append - add data to task");
+        println!("mkdir - create a new directory");
     }
 
 
