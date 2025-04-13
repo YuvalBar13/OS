@@ -1,7 +1,8 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 use lazy_static::lazy_static;
-use crate::{println, eprintln,terminal::input::buffer::BUFFER};
-
+use crate::{println, eprintln, terminal::input::buffer::BUFFER, print};
+use crate::interrupts::gdt;
+use crate::multitasking::round_robin::{schedule, TaskManager, TASK_MANAGER};
 use pic8259::ChainedPics;
 use spin;
 
@@ -23,9 +24,6 @@ impl InterruptIndex {
         self as u8
     }
 
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
-    }
 }
 
 lazy_static! {
@@ -34,9 +32,14 @@ lazy_static! {
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         idt[InterruptIndex::Timer.as_u8()]
             .set_handler_fn(timer_interrupt_handler);
-
+        idt.page_fault.set_handler_fn(page_fault_handler);
         idt[InterruptIndex::Keyboard.as_u8()]
             .set_handler_fn(keyboard_interrupt_handler);
+
+        unsafe {
+            idt.double_fault.set_handler_fn(double_fault_handler)
+              .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
+        }
 
         idt
     };
@@ -55,12 +58,14 @@ extern "x86-interrupt" fn breakpoint_handler(
 extern "x86-interrupt" fn timer_interrupt_handler(
     _stack_frame: InterruptStackFrame)
 {
-    //my_info!(".");
+
 
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
+    schedule();
+
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(
@@ -76,7 +81,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
                 HandleControl::Ignore)
             );
     }
-    
+
 
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
@@ -86,7 +91,11 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
                 DecodedKey::Unicode(character) => x86_64::instructions::interrupts::without_interrupts(|| {BUFFER.lock().add_char(character);}),
-                DecodedKey::RawKey(key) => println!("{:?}", key),
+                DecodedKey::RawKey(key) => {
+                    if key == pc_keyboard::KeyCode::ArrowUp {
+                        x86_64::instructions::interrupts::without_interrupts(||{BUFFER.lock().arrow_up()});
+                    }
+                },
             }
         }
     }
@@ -95,4 +104,18 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
     }
+}
+
+extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: InterruptStackFrame, _error_code: u64) -> !
+{
+    panic!("EXCEPTION: DOUBLE FAULT ");
+}
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame, error_code: x86_64::structures::idt::PageFaultErrorCode
+)
+{
+
+     eprintln!("error code {:?}", error_code);
+    panic!("EXCEPTION: PAGE FAULT {:?}", stack_frame);
 }
