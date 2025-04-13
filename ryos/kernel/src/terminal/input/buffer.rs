@@ -1,13 +1,14 @@
-use heapless::String;
-use crate::{print, println};
+use alloc::string::String;
+use alloc::vec::Vec;
+use crate::{print};
 use lazy_static::lazy_static;
 use crate::terminal::output::framebuffer::WRITER;
-const BUFFER_SIZE: usize = 100;
 
 #[derive(Default)]
 pub struct InputBuffer {
-    buffer: String<BUFFER_SIZE>,
+    buffer: String,
     is_listening: bool,
+    pub history: Vec<String>,
 }
 
 impl InputBuffer {
@@ -15,6 +16,7 @@ impl InputBuffer {
         InputBuffer {
             buffer: String::new(),
             is_listening: false,
+            history: Vec::new(),
         }
     }
 
@@ -38,16 +40,10 @@ impl InputBuffer {
             WRITER.get().expect("Writer not initialized").lock().backspace();
             return true;
         }
+        self.buffer.push(character);
+        print!("{}", character);
+        true
 
-        if self.buffer.len() < self.buffer.capacity() {
-            self.buffer.push(character).ok();
-            print!("{}", character);
-            return true;
-        } else {
-            println!("Buffer is full");
-        }
-
-        false
     }
 
     fn end_listening(&mut self)
@@ -67,12 +63,27 @@ impl InputBuffer {
         }
     }
     
-    pub fn get_input(&mut self) -> String<BUFFER_SIZE> {
+    pub fn get_input(&mut self) -> String {
         self.listen();
 
         let input = self.buffer.clone();
         self.buffer.clear();
+        self.history.push(input.clone());
         input
+    }
+    pub fn arrow_up(&mut self)
+    {
+        if self.history.is_empty() {
+            return;
+        }
+        if !self.buffer.is_empty() {
+            for _ in 0..self.buffer.len() - 1 {
+                WRITER.get().expect("Writer not initialized").lock().backspace();
+            }
+        }
+
+        self.buffer = self.history.pop().unwrap();
+        print!("{}", self.buffer);
     }
 }
 

@@ -11,8 +11,9 @@ use noto_sans_mono_bitmap::{
     get_raster, get_raster_width, FontWeight, RasterHeight, RasterizedChar,
 };
 
-pub static DEFAULT_COLOR: Color = Color { red: 255, green: 255, blue: 255 };
-pub static ERROR_COLOR: Color = Color { red: 255, green: 0, blue: 0 };
+pub const DEFAULT_COLOR: Color = Color { red: 255, green: 255, blue: 255 };
+pub const ERROR_COLOR: Color = Color { red: 255, green: 0, blue: 0 };
+pub const BACKGROUND_COLOR: Color = Color { red: 0, green: 0, blue: 0 };
 
 // Global writer instance using OnceCell
 pub static WRITER: OnceCell<Mutex<Writer>> = OnceCell::uninit();
@@ -26,7 +27,7 @@ pub fn init_writer(framebuffer: FrameBuffer) {
         FontWeight::Regular,
     );
     WRITER.init_once(|| Mutex::new(writer));
-    WRITER.get().expect("Writer not initialized").lock().clear_screen_with_color(Color { red: 0, green: 0, blue: 0 });
+    WRITER.get().expect("Writer not initialized").lock().clear_screen();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,12 @@ pub struct Color {
     pub blue: u8,
 }
 
+impl Color
+{
+    pub const fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self { red, green, blue }
+    }
+}
 pub fn set_pixel_in(framebuffer: &mut FrameBuffer, position: Position, color: Color) {
     let info = framebuffer.info();
 
@@ -158,7 +165,7 @@ impl Writer {
         self.font_height.val()
     }
 
-    pub fn clear_screen_with_color(&mut self, color: Color) {
+    pub fn clear_screen(&mut self ) {
         let info = self.buffer.info();
 
         for y in 0..info.height {
@@ -166,7 +173,7 @@ impl Writer {
                 set_pixel_in(
                     &mut self.buffer,
                     Position { x, y },
-                    color
+                    BACKGROUND_COLOR
                 );
             }
         }
@@ -224,33 +231,31 @@ impl Writer {
 
     fn scroll(&mut self) {
         let info = self.buffer.info();
+        // Calculate the number of bytes per pixel row.
         let bytes_per_line = info.stride * info.bytes_per_pixel;
         let char_height = self.char_height();
         let buffer = self.buffer.buffer_mut();
 
-        // Move all lines up by one character height
+        // Move every pixel row upward by one text row (i.e. char_height pixels).
         for line in 0..(info.height - char_height) {
             let src_offset = (line + char_height) * bytes_per_line;
             let dst_offset = line * bytes_per_line;
-            buffer.copy_within(
-                src_offset..(src_offset + bytes_per_line),
-                dst_offset,
-            );
+            buffer.copy_within(src_offset..(src_offset + bytes_per_line), dst_offset);
         }
 
-        // Clear the last line
-        for y in 0..char_height {
+        // Clear the bottom char_height rows (the “new” empty text row).
+        for y in (info.height - char_height)..info.height {
             for x in 0..info.width {
-                let pos = Position {
-                    x,
-                    y: info.height - char_height + y,
-                };
-                set_pixel_in(&mut self.buffer, pos, Color { red: 0, green: 0, blue: 0 });
+                let pos = Position { x, y };
+                set_pixel_in(&mut self.buffer, pos, BACKGROUND_COLOR);
             }
         }
 
-        self.row_position -= 1;
+        // Set the text cursor to the bottom text row.
+        let total_rows = info.height / char_height;
+        self.row_position = total_rows - 1;
     }
+
 
     pub fn backspace(&mut self) {
         if self.column_position > 0 {
@@ -266,7 +271,7 @@ impl Writer {
                         x: self.column_position * char_width + x,
                         y: self.row_position * char_height + y,
                     };
-                    set_pixel_in(&mut self.buffer, pos, Color { red: 0, green: 0, blue: 0 });
+                    set_pixel_in(&mut self.buffer, pos, BACKGROUND_COLOR);
                 }
             }
         }
@@ -283,3 +288,22 @@ impl core::fmt::Write for Writer {
     }
 }
 
+pub struct MyFrameBuffer {
+    buffer: FrameBuffer,
+}
+
+impl MyFrameBuffer {
+    pub  fn shallow_copy(&self) -> MyFrameBuffer {
+        MyFrameBuffer {
+            buffer: unsafe {FrameBuffer::new(self.buffer.buffer().as_ptr() as *mut u8 as u64, self.buffer.info())},
+        }
+    }
+    pub fn new(buffer: FrameBuffer) -> Self {
+        MyFrameBuffer {
+            buffer,
+        }
+    }
+    pub fn get_buffer(self) -> FrameBuffer {
+        self.buffer
+    }
+}
